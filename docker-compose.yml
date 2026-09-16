@@ -1,0 +1,18 @@
+services:
+  beyza:
+    build: .
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=production
+      - SESSION_SECRET=${SESSION_SECRET:?Set SESSION_SECRET in .env (see .env.example)}
+      - DATABASE_PATH=/app/storage/beyza.db
+      - STORAGE_DIR=/app/storage
+      - AI_MONTHLY_BUDGET_EUR=${AI_MONTHLY_BUDGET_EUR:-0}
+      - AI_DAILY_BUDGET_EUR=${AI_DAILY_BUDGET_EUR:-0}
+    volumes:
+      - beyza-storage:/app/storage
+    restart: unless-stopped
+
+volumes:
+  beyza-storage:

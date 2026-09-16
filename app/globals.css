@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ay-Yıldız Dark Red — default internal theme (section 6.1) */
+:root,
+[data-theme='ay-yildiz-dark-red'] {
+  --color-surface: 10 9 11;
+  --color-surface-raised: 20 17 19;
+  --color-border: 54 32 36;
+  --color-accent: 168 22 32;
+  --color-accent-soft: 90 20 26;
+  --color-ink: 240 236 233;
+  --color-muted: 168 160 158;
+  --color-gold: 196 164 92;
+}
+
+[data-theme='classic-premium-dark'] {
+  --color-surface: 15 16 20;
+  --color-surface-raised: 24 26 32;
+  --color-border: 45 48 58;
+  --color-accent: 90 110 220;
+  --color-accent-soft: 50 60 120;
+  --color-ink: 235 237 242;
+  --color-muted: 150 155 168;
+  --color-gold: 180 180 190;
+}
+
+[data-theme='neutral-business-light'] {
+  --color-surface: 250 250 251;
+  --color-surface-raised: 255 255 255;
+  --color-border: 224 224 228;
+  --color-accent: 37 99 235;
+  --color-accent-soft: 219 234 254;
+  --color-ink: 24 24 27;
+  --color-muted: 100 100 110;
+  --color-gold: 202 138 4;
+}
+
+/* Customer Demo Mode overlays a calmer, neutral look regardless of the base theme,
+   per section 6.4: no internal Ay-Yıldız aesthetic shown to a customer/partner. */
+[data-demo-mode='true'] {
+  --color-accent: 37 99 235;
+  --color-accent-soft: 219 234 254;
+}
+
+body {
+  background-color: rgb(var(--color-surface));
+  color: rgb(var(--color-ink));
+}
+
+.mosque-skyline-backdrop {
+  background-image: radial-gradient(
+      ellipse at bottom,
+      rgb(var(--color-accent-soft) / 0.35),
+      transparent 60%
+    ),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 200' preserveAspectRatio='none'%3E%3Cpath d='M0 200 L0 150 L40 150 L40 120 L60 100 L80 120 L80 150 L140 150 L140 90 Q160 60 180 90 L180 150 L220 150 L220 130 L240 110 L260 130 L260 150 L340 150 L340 70 Q360 30 380 70 L380 150 L440 150 L440 140 L460 125 L480 140 L480 150 L560 150 L560 60 Q600 10 640 60 L640 150 L720 150 L720 130 L740 115 L760 130 L760 150 L840 150 L840 90 Q860 55 880 90 L880 150 L940 150 L940 135 L960 118 L980 135 L980 150 L1060 150 L1060 100 Q1080 65 1100 100 L1100 150 L1160 150 L1160 140 L1180 128 L1200 140 L1200 200 Z' fill='%23000000' fill-opacity='0.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: bottom;
+  background-size: cover;
+}
