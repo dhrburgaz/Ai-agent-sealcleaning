@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  SESSION_SECRET: ci-only-session-secret-not-a-real-secret-32chars
+  AI_MONTHLY_BUDGET_EUR: '0'
+  AI_DAILY_BUDGET_EUR: '0'
+
+jobs:
+  check:
+    name: lint + typecheck + unit/integration tests + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
+  e2e:
+    name: Playwright smoke test
+    runs-on: ubuntu-latest
+    needs: check
+    env:
+      DATABASE_PATH: ./storage/ci-e2e.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Apply migrations against a fresh database
+        run: npm run db:migrate
+      - name: Build production bundle
+        run: npm run build
+      - name: Start production server
+        run: npx next start -p 3000 &
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://localhost:3000/setup; then exit 0; fi
+            sleep 2
+          done
+          echo "Server did not become ready in time" >&2
+          exit 1
+      - name: Run Playwright smoke test
+        run: npx playwright test tests/e2e/smoke.spec.ts --reporter=list
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

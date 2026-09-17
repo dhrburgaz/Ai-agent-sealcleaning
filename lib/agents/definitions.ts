@@ -61,8 +61,9 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     displayName: 'Photo / Vision Inspector',
     purpose: 'Analyze customer photos.',
     costTier: 'tier3',
-    buildStatus: 'planned',
-    buildNote: 'DB tables (photo_analyses, attachments) and upload validation exist; vision inference is Phase 5.',
+    buildStatus: 'implemented_deterministic',
+    buildNote:
+      'lib/agents/vision-inspector.ts: deterministic manual-review skeleton always runs at €0; a real vision-model call layers on top only if a paid provider is configured/budgeted via lib/ai/model-router.ts.',
   },
   {
     key: 'agent07_scope_builder',
@@ -76,9 +77,9 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     key: 'agent08_method_planner',
     displayName: 'Technical Method Planner',
     purpose: 'Create a practical work method.',
-    costTier: 'tier2',
-    buildStatus: 'planned',
-    buildNote: 'risk_flags table exists; narrative method planning is Phase 4+.',
+    costTier: 'tier0',
+    buildStatus: 'implemented_deterministic',
+    buildNote: 'lib/pricing/method-planner.ts: rule-based method plan for the ceramic-terrace template, no model needed.',
   },
   {
     key: 'agent09_pricing',
@@ -94,7 +95,8 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     purpose: 'Find cheapest acceptable procurement paths.',
     costTier: 'tier1',
     buildStatus: 'partially_implemented',
-    buildNote: 'lib/suppliers/landed-cost.ts + schema implemented; live scanning connectors are Phase 6.',
+    buildNote:
+      'lib/suppliers/landed-cost.ts + schema implemented; lib/suppliers/url-price-fetcher.ts adds owner-pasted-URL live price fetch with SSRF protection and mandatory source+timestamp. Fully automated (unattended) scanning is intentionally out of scope — it would need a paid scraping/search API or a scheduled job, neither available at €0.',
   },
   {
     key: 'agent11_bom',
@@ -132,17 +134,19 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     key: 'agent15_scheduling_route',
     displayName: 'Scheduling & Route Agent',
     purpose: 'Build efficient days.',
-    costTier: 'tier1',
-    buildStatus: 'planned',
-    buildNote: 'Phase 7.',
+    costTier: 'tier0',
+    buildStatus: 'implemented_deterministic',
+    buildNote:
+      'lib/scheduling/calendar.ts: deterministic double-booking prevention with a per-slot travel buffer, wired into job scheduling (app/dashboard/calendar/actions.ts#scheduleJobAction). Multi-stop route optimization across a full day is not attempted — a single-crew business books one job at a time.',
   },
   {
     key: 'agent16_calendar',
     displayName: 'Calendar & Appointment Agent',
     purpose: 'Book site visits/jobs.',
     costTier: 'tier0',
-    buildStatus: 'planned',
-    buildNote: 'appointments/calendar_events tables exist; UI and ICS import/export are Phase 7.',
+    buildStatus: 'implemented_deterministic',
+    buildNote:
+      'app/dashboard/calendar/: propose/confirm/cancel appointments (wired to the lead state machine), manual calendar events, and ICS export (lib/scheduling/ics.ts) via /api/calendar/ics. ICS import is implemented in the library (parseIcsCalendar) but has no UI entry point yet — external calendars are exported to, not synced from.',
   },
   {
     key: 'agent17_crm_followup',
@@ -150,23 +154,26 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     purpose: 'Never forget a useful customer opportunity.',
     costTier: 'tier0',
     buildStatus: 'implemented_deterministic',
-    buildNote: 'Lead state machine, CRM tables. Automated follow-up scheduling is Phase 7.',
+    buildNote:
+      'Lead state machine, CRM tables, plus automated follow-up scheduling: quote.sent queues a first reminder 3 days out, app/dashboard/follow-ups/ lets the owner review/approve/send each due reminder (never an unattended send) and automatically queues the next step or opted-out otherwise.',
   },
   {
     key: 'agent18_finance_costing',
     displayName: 'Finance & Job Costing Agent',
     purpose: 'Know actual job economics.',
     costTier: 'tier0',
-    buildStatus: 'partially_implemented',
-    buildNote: 'lib/jobs/costing.ts covers estimate-vs-actual + profit floor check. Full monthly/pipeline reports are Phase 7.',
+    buildStatus: 'implemented_deterministic',
+    buildNote:
+      'lib/jobs/costing.ts covers per-job estimate-vs-actual + profit floor check. lib/jobs/finance-report.ts adds monthly revenue/cost/margin aggregation, win rate, and profit-floor achievement rate, rendered on app/dashboard/finance/page.tsx — all computed only from real completed jobs/quotes/leads, never projected.',
   },
   {
     key: 'agent19_reputation_content',
     displayName: 'Reputation & Content Agent',
     purpose: 'Turn completed work into proof and future leads.',
-    costTier: 'tier2',
-    buildStatus: 'planned',
-    buildNote: 'review_requests table exists; content drafting is Phase 7.',
+    costTier: 'tier0',
+    buildStatus: 'implemented_deterministic',
+    buildNote:
+      'job.completed orchestration handler (lib/orchestration/register-handlers.ts) drafts a review_requests row from the zero-AI review_request template as soon as a job completes, and advances the lead to REVIEW_REQUESTED. Owner-authored content marketing beyond the review-ask draft is out of scope — that is a creative task, not something to fabricate.',
   },
   {
     key: 'agent20_qa_compliance',

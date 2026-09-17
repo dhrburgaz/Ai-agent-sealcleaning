@@ -1,5 +1,5 @@
 import { db } from '@/db/client';
-import { leads, messages, messageThreads, quotes, jobs, followUps, supplierPriceObservations, externalConnectors } from '@/db/schema';
+import { leads, messages, messageThreads, quotes, jobs, followUps, supplierPriceObservations, externalConnectors, appointments } from '@/db/schema';
 import type { StatusSnapshot } from '@/lib/agents/beyza-orchestrator';
 import { getOrCreateBudgetPolicy } from '@/lib/server/repo';
 
@@ -58,8 +58,13 @@ export async function buildStatusSnapshot(): Promise<StatusSnapshot> {
     (c) => c.lastHealthStatus === 'failed',
   ).length;
 
-  void since72h;
-  const visitsNext72h = 0; // appointments UI is Phase 7; kept at 0 deterministically rather than faked
+  const visitsNext72h = (await db.select().from(appointments)).filter(
+    (a) =>
+      a.kind === 'site_visit' &&
+      a.status !== 'cancelled' &&
+      a.startsAt >= now &&
+      a.startsAt <= since72h,
+  ).length;
 
   return {
     leadsLast24h,

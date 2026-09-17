@@ -26,11 +26,11 @@ This document is the human-readable companion.
 | 12 | Waste & Disposal Agent | **Implemented (deterministic)** | `lib/pricing/waste.ts` |
 | 13 | Equipment & Rental Agent | **Implemented (deterministic)** | `lib/pricing/equipment.ts` |
 | 14 | Labour & Crew Planner | **Implemented (deterministic)** | `lib/pricing/labour.ts` |
-| 15 | Scheduling & Route Agent | Planned (Phase 7) | — |
-| 16 | Calendar & Appointment Agent | Planned (Phase 7) | schema only: `appointments`, `calendar_events` |
-| 17 | CRM, Memory & Follow-up Agent | **Implemented (deterministic)**, now event-driven via the orchestration bus — automated scheduling is Phase 7 | `lib/crm/state-machine.ts`, `lib/crm/follow-up.ts`, `lib/orchestration/register-handlers.ts` |
-| 18 | Finance & Job Costing Agent | Partial — actual-vs-estimate only; full BI reporting is Phase 7 | `lib/jobs/costing.ts` |
-| 19 | Reputation & Content Agent | Planned (Phase 7) | schema only: `review_requests` |
+| 15 | Scheduling & Route Agent | **Implemented (deterministic)** | `lib/scheduling/calendar.ts`, `app/dashboard/calendar/actions.ts` (`scheduleJobAction`) |
+| 16 | Calendar & Appointment Agent | **Implemented (deterministic)** | `app/dashboard/calendar/`, `lib/scheduling/ics.ts`, `/api/calendar/ics` |
+| 17 | CRM, Memory & Follow-up Agent | **Implemented (deterministic)**, including automated follow-up scheduling | `lib/crm/state-machine.ts`, `lib/crm/follow-up.ts`, `app/dashboard/follow-ups/`, `lib/orchestration/register-handlers.ts` |
+| 18 | Finance & Job Costing Agent | **Implemented (deterministic)** — per-job actual-vs-estimate plus monthly/pipeline/win-rate reporting | `lib/jobs/costing.ts`, `lib/jobs/finance-report.ts`, `app/dashboard/finance/` |
+| 19 | Reputation & Content Agent | **Implemented (deterministic)** — review-request drafting; broader content marketing out of scope | `lib/orchestration/register-handlers.ts` (`job.completed` handler), `db/schema/leads.ts#reviewRequests` |
 | 20 | QA, Compliance & System Health Agent | **Implemented (deterministic)**, now also records `agent_runs` for every agent invocation across the system | `lib/pricing/qa-gate.ts`, `lib/orchestration/agent-run.ts` |
 
 ## Why so many agents are "deterministic" rather than "AI"
@@ -105,6 +105,32 @@ conversation history — smaller prompts, deterministic cache keys, and no
 unbounded token growth as a lead's history lengthens. Packs are versioned and
 persisted to `context_packs` so a cache hit can be traced back to exactly
 what input produced it.
+
+## Scheduling, calendar, follow-up, and finance (Phase 7)
+
+- **Scheduling/calendar (Agents 15/16)**: `lib/scheduling/calendar.ts`
+  provides deterministic double-booking prevention — `findSchedulingConflicts`
+  expands every candidate and existing slot by its travel buffer before
+  checking for overlap, so a site visit or job can never be booked on top of
+  an existing one. `lib/scheduling/ics.ts` generates (and can parse) RFC 5545
+  ICS text with no external dependency; `/api/calendar/ics` exports every
+  calendar event as a downloadable/importable file for any standard calendar
+  app. `app/dashboard/calendar/` proposes/confirms/cancels appointments (with
+  the appropriate lead-state-machine transitions), schedules jobs, and lets
+  the owner add manual calendar events (supplier pickups, rental
+  pickup/return, disposal trips, private blocks).
+- **Follow-up automation (Agent 17)**: `quote.sent` schedules the first
+  follow-up 3 days out (`lib/crm/follow-up.ts#computeNextFollowUpDate`);
+  `app/dashboard/follow-ups/` lists what's due, and sending one goes through
+  the exact same template/approval/audit path as any other outbound message
+  (`decideSend`) — never an unattended send. A successful send automatically
+  queues the next step (day 7) unless the customer has opted out or the max
+  step is reached, in which case the sequence stops.
+- **Finance/BI reporting (Agent 18)**: `lib/jobs/finance-report.ts` adds
+  monthly revenue/cost/margin aggregation, win rate (over decided leads
+  only), and the €1,200 profit-floor achievement rate, all computed strictly
+  from completed jobs, sent quotes, and decided leads — never a forecast
+  presented as an actual. Rendered on `app/dashboard/finance/`.
 
 ## Cost/audit discipline per agent
 

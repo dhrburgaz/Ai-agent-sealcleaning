@@ -1,0 +1,39 @@
+'use client';
+
+import { useActionState } from 'react';
+import { scheduleJobAction, type ScheduleJobState } from '@/app/dashboard/calendar/actions';
+
+const initialState: ScheduleJobState = {};
+
+export function ScheduleJobForm({ jobs }: { jobs: { id: string; label: string }[] }) {
+  const [state, formAction, pending] = useActionState(scheduleJobAction, initialState);
+
+  if (jobs.length === 0) {
+    return <p className="text-sm text-muted">Planlanacak (henüz tarihsiz) iş yok.</p>;
+  }
+
+  return (
+    <form action={formAction} className="grid gap-3 sm:grid-cols-2">
+      <select name="jobId" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm sm:col-span-2">
+        <option value="">— İş seç —</option>
+        {jobs.map((j) => (
+          <option key={j.id} value={j.id}>
+            {j.label}
+          </option>
+        ))}
+      </select>
+      <label className="flex flex-col gap-1 text-xs text-muted">
+        Başlangıç
+        <input name="startsAt" type="datetime-local" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink" />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted">
+        Bitiş
+        <input name="endsAt" type="datetime-local" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink" />
+      </label>
+      <button type="submit" disabled={pending} className="self-start rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 sm:col-span-2">
+        {pending ? '…' : 'İşi planla'}
+      </button>
+      {state.error && <p className="text-sm text-accent sm:col-span-2">{state.error}</p>}
+    </form>
+  );
+}

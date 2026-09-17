@@ -6,11 +6,12 @@
  */
 import { eq } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { estimates, jobs, reviewRequests, leads, leadEvents, estimateLines, attachments } from '@/db/schema';
+import { estimates, jobs, reviewRequests, leads, leadEvents, estimateLines, attachments, customers, followUps } from '@/db/schema';
 import { eventBus } from './events';
 import { recordAgentRun } from './agent-run';
 import { runQaGate } from '@/lib/pricing/qa-gate';
 import { findExistingAnalysisByHash } from '@/lib/pricing/image-dedupe';
+import { canScheduleFollowUp, computeNextFollowUpDate } from '@/lib/crm/follow-up';
 
 let registered = false;
 
@@ -135,6 +136,32 @@ export function ensureHandlersRegistered(): void {
       entityType: 'quote',
       entityId: quoteId,
       outputSummary: { sendReady: true },
+    });
+  });
+
+  // quote.sent -> schedule the first follow-up reminder (section 17/35), unless
+  // the customer has opted out. The actual send is never automatic here (that
+  // would bypass approval-gating); this only queues a due reminder for the
+  // owner to review/send from /dashboard/follow-ups.
+  eventBus.on('quote.sent', async ({ leadId }) => {
+    const [lead] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+    if (!lead) return;
+    const customer = lead.customerId
+      ? (await db.select().from(customers).where(eq(customers.id, lead.customerId)).limit(1))[0]
+      : null;
+
+    const decision = canScheduleFollowUp({ customerOptedOut: customer?.optedOut ?? false, sequenceStep: 1 });
+    if (decision.allowed) {
+      const scheduledAt = computeNextFollowUpDate(1, new Date());
+      await db.insert(followUps).values({ leadId, sequenceStep: 1, scheduledAt, status: 'scheduled' });
+    }
+
+    await recordAgentRun({
+      agentKey: 'agent17_crm_followup',
+      triggeredBy: 'event:quote.sent',
+      entityType: 'lead',
+      entityId: leadId,
+      outputSummary: { scheduled: decision.allowed, reason: decision.reason },
     });
   });
 

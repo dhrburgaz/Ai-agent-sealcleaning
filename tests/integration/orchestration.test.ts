@@ -186,6 +186,42 @@ describe('orchestration event handlers — real database integration (section 47
     expect(runs[0]!.cacheHit).toBe(true);
   });
 
+  it('quote.sent handler schedules the first follow-up 3 days out', async () => {
+    const { eventBus } = await import('@/lib/orchestration/events');
+    const { ensureHandlersRegistered } = await import('@/lib/orchestration/register-handlers');
+    ensureHandlersRegistered();
+
+    const [customer] = await db.insert(schema.customers).values({ name: 'Follow-up Klant', optedOut: false }).returning();
+    const [lead] = await db
+      .insert(schema.leads)
+      .values({ customerId: customer!.id, serviceCategory: 'terrassen_aanleggen', state: 'QUOTE_SENT' })
+      .returning();
+
+    await eventBus.emit('quote.sent', { leadId: lead!.id, quoteId: 'quote-1' });
+
+    const scheduled = await db.select().from(schema.followUps).where(eq(schema.followUps.leadId, lead!.id));
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]!.sequenceStep).toBe(1);
+    expect(scheduled[0]!.status).toBe('scheduled');
+  });
+
+  it('quote.sent handler never schedules a follow-up for an opted-out customer', async () => {
+    const { eventBus } = await import('@/lib/orchestration/events');
+    const { ensureHandlersRegistered } = await import('@/lib/orchestration/register-handlers');
+    ensureHandlersRegistered();
+
+    const [customer] = await db.insert(schema.customers).values({ name: 'Opted Out Klant', optedOut: true }).returning();
+    const [lead] = await db
+      .insert(schema.leads)
+      .values({ customerId: customer!.id, serviceCategory: 'terrassen_aanleggen', state: 'QUOTE_SENT' })
+      .returning();
+
+    await eventBus.emit('quote.sent', { leadId: lead!.id, quoteId: 'quote-2' });
+
+    const scheduled = await db.select().from(schema.followUps).where(eq(schema.followUps.leadId, lead!.id));
+    expect(scheduled).toHaveLength(0);
+  });
+
   it('message.received handler advances CONTACTED -> REPLIED', async () => {
     const { eventBus } = await import('@/lib/orchestration/events');
     const { ensureHandlersRegistered } = await import('@/lib/orchestration/register-handlers');

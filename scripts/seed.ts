@@ -3,6 +3,7 @@
  * repeatedly against a fresh database (fails loudly if company profile already
  * exists, to avoid silently duplicating demo records over real data).
  */
+import { eq } from 'drizzle-orm';
 import { db, sqlite } from '../db/client';
 import {
   companyProfile,
@@ -25,6 +26,11 @@ import {
   quotes,
   jobs,
   actualCosts,
+  reviewRequests,
+  inventoryItems,
+  appointments,
+  calendarEvents,
+  followUps,
 } from '../db/schema';
 import { hashPassword } from '../lib/auth/password';
 import { AGENT_DEFINITIONS } from '../lib/agents/definitions';
@@ -95,12 +101,15 @@ async function main() {
   ]);
 
   const demoLeadsData = [
-    { name: 'DEMO Klant A', service: 'keramische_buitentegels', location: 'Dordrecht', scale: 'large' as const, urgency: 'medium' as const, text: '40 m2 terras, oude tegels eruit, nieuwe keramische tegels erin.' },
-    { name: 'DEMO Klant B', service: 'schuttingen_plaatsen', location: 'Dordrecht', scale: 'medium' as const, urgency: 'low' as const, text: 'Nieuwe schutting rondom achtertuin.' },
-    { name: 'DEMO Klant C', service: 'tuin_opruimen', location: 'Papendrecht', scale: 'small' as const, urgency: 'high' as const, text: 'Tuin snel opruimen voor verkoop huis.' },
-    { name: 'DEMO Klant D', service: 'schuur_leegmaken', location: 'Zwijndrecht', scale: 'small' as const, urgency: 'medium' as const, text: 'Schuur leegmaken en oud hout afvoeren.' },
-    { name: 'DEMO Klant E', service: 'tuinonderhoud', location: 'Dordrecht', scale: 'medium' as const, urgency: 'low' as const, text: 'Maandelijks tuinonderhoud gezocht.' },
+    { name: 'DEMO Klant A', service: 'keramische_buitentegels', location: 'Dordrecht', scale: 'large' as const, urgency: 'medium' as const, text: '40 m2 terras, oude tegels eruit, nieuwe keramische tegels erin.', state: 'QUALIFIED' as const },
+    { name: 'DEMO Klant B', service: 'schuttingen_plaatsen', location: 'Dordrecht', scale: 'medium' as const, urgency: 'low' as const, text: 'Nieuwe schutting rondom achtertuin.', state: 'SITE_VISIT_BOOKED' as const },
+    { name: 'DEMO Klant C', service: 'tuin_opruimen', location: 'Papendrecht', scale: 'small' as const, urgency: 'high' as const, text: 'Tuin snel opruimen voor verkoop huis.', state: 'NEW' as const },
+    { name: 'DEMO Klant D', service: 'schuur_leegmaken', location: 'Zwijndrecht', scale: 'small' as const, urgency: 'medium' as const, text: 'Schuur leegmaken en oud hout afvoeren.', state: 'NEW' as const },
+    { name: 'DEMO Klant E', service: 'tuinonderhoud', location: 'Dordrecht', scale: 'medium' as const, urgency: 'low' as const, text: 'Maandelijks tuinonderhoud gezocht.', state: 'NEW' as const },
+    { name: 'DEMO Klant F', service: 'terrassen_aanleggen', location: 'Dordrecht', scale: 'medium' as const, urgency: 'medium' as const, text: 'Terras vervangen, offerte al verstuurd, nog geen reactie.', state: 'QUOTE_SENT' as const },
   ];
+
+  const leadsByName = new Map<string, { id: string; customerId: string }>();
 
   for (const d of demoLeadsData) {
     const [customer] = await db.insert(customers).values({ name: d.name, phone: '+31 6 00000001', email: null }).returning();
@@ -133,10 +142,17 @@ async function main() {
         priorityScore: qualification.score,
         priorityReasons: qualification.reasons,
         nextBestAction: qualification.nextBestAction,
-        state: 'NEW',
+        state: d.state,
       })
       .returning();
-    await db.insert(leadEvents).values({ leadId: lead!.id, kind: 'state_transition', toState: 'NEW', actor: 'seed', detail: 'DEMO seed' });
+    leadsByName.set(d.name, { id: lead!.id, customerId: customer!.id });
+    await db.insert(leadEvents).values({
+      leadId: lead!.id,
+      kind: 'state_transition',
+      toState: d.state,
+      actor: 'seed',
+      detail: d.state === 'NEW' ? 'DEMO seed' : `DEMO seed (collapsed state history to ${d.state})`,
+    });
     const [thread] = await db.insert(messageThreads).values({ leadId: lead!.id, customerId: customer!.id }).returning();
     await db.insert(messages).values({ threadId: thread!.id, direction: 'inbound', body: d.text, language: 'nl', status: 'sent' });
   }
@@ -154,14 +170,53 @@ async function main() {
     staleAfter: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
   });
 
-  // One completed demo job with variance, to exercise the job-costing screen.
-  const completedLeadCustomer = await db.select().from(customers).limit(1);
-  const demoLead = await db.select().from(leads).limit(1);
-  if (demoLead[0]) {
+  // Inventory on hand (Phase 6), so the inventory page and offset logic have
+  // real DEMO stock to check against.
+  await db.insert(inventoryItems).values([
+    { label: 'Keramische tegel 60x60 (DEMO)', unit: 'm2', quantityOnHand: 18, reorderThreshold: 20 },
+    { label: 'Straatzand (DEMO)', unit: 'm3', quantityOnHand: 2.5, reorderThreshold: 3 },
+  ]);
+
+  // A confirmed site-visit appointment for Klant B (SITE_VISIT_BOOKED), so
+  // the calendar page and ICS export have something real to show.
+  const klantB = leadsByName.get('DEMO Klant B');
+  if (klantB) {
+    const visitStart = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    const visitEnd = new Date(visitStart.getTime() + 60 * 60 * 1000);
+    const [appointment] = await db
+      .insert(appointments)
+      .values({ leadId: klantB.id, kind: 'site_visit', startsAt: visitStart, endsAt: visitEnd, status: 'confirmed' })
+      .returning();
+    await db.insert(calendarEvents).values({
+      appointmentId: appointment!.id,
+      kind: 'site_visit',
+      title: 'Keşif randevusu (DEMO)',
+      startsAt: visitStart,
+      endsAt: visitEnd,
+      icsUid: `appointment-${appointment!.id}@beyza`,
+    });
+  }
+
+  // A due follow-up for Klant F (QUOTE_SENT 4 days ago, no reply yet), so the
+  // follow-ups queue has a real due reminder to demonstrate Agent 17.
+  const klantF = leadsByName.get('DEMO Klant F');
+  if (klantF) {
+    await db.insert(followUps).values({
+      leadId: klantF.id,
+      sequenceStep: 1,
+      scheduledAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      status: 'scheduled',
+    });
+  }
+
+  // One completed demo job with variance, to exercise the job-costing and
+  // finance-report screens (Agent 18) and the review-request draft (Agent 19).
+  const klantA = leadsByName.get('DEMO Klant A');
+  if (klantA) {
     const [demoEstimate] = await db
       .insert(estimates)
       .values({
-        leadId: demoLead[0].id,
+        leadId: klantA.id,
         status: 'ready',
         directCost: 1800,
         costWithOverhead: 1990,
@@ -177,7 +232,7 @@ async function main() {
     const [demoQuote] = await db
       .insert(quotes)
       .values({
-        leadId: demoLead[0].id,
+        leadId: klantA.id,
         estimateId: demoEstimate!.id,
         quoteNumber: 'Q-DEMO-0001',
         status: 'accepted',
@@ -189,15 +244,24 @@ async function main() {
       .returning();
     const [demoJob] = await db
       .insert(jobs)
-      .values({ leadId: demoLead[0].id, quoteId: demoQuote!.id, status: 'completed', completedAt: new Date() })
+      .values({ leadId: klantA.id, quoteId: demoQuote!.id, status: 'completed', completedAt: new Date() })
       .returning();
     await db.insert(actualCosts).values([
       { jobId: demoJob!.id, category: 'labour', amount: 900, enteredVia: 'form', confirmedAt: new Date() },
       { jobId: demoJob!.id, category: 'materials', amount: 850, enteredVia: 'form', confirmedAt: new Date() },
       { jobId: demoJob!.id, category: 'disposal', amount: 220, enteredVia: 'form', confirmedAt: new Date() },
     ]);
+    await db.insert(reviewRequests).values({ jobId: demoJob!.id, status: 'draft', draftText: null });
+    await db.update(leads).set({ state: 'REVIEW_REQUESTED' }).where(eq(leads.id, klantA.id));
+    await db.insert(leadEvents).values({
+      leadId: klantA.id,
+      kind: 'state_transition',
+      fromState: 'QUALIFIED',
+      toState: 'REVIEW_REQUESTED',
+      actor: 'seed',
+      detail: 'DEMO seed (collapsed state history: job completed, review request drafted)',
+    });
   }
-  void completedLeadCustomer;
 
   console.log(`DEMO seed complete for company: ${company!.companyName}`);
   console.log('Login password: DemoPassword123 (DEMO only — change in a real deployment).');

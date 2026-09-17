@@ -17,6 +17,7 @@ export interface OrchestrationEventMap {
   'photo.added': { leadId: string; attachmentId: string; imageHash: string };
   'scope.changed': { leadId: string; scopeId?: string; estimateId?: string };
   'quote.approved': { leadId: string; quoteId: string };
+  'quote.sent': { leadId: string; quoteId: string };
   'job.completed': { leadId: string; jobId: string };
 }
 

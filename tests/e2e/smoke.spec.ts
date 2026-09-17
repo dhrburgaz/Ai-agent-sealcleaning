@@ -85,4 +85,21 @@ test('setup wizard -> login -> lead -> estimate -> quote PDF', async ({ page }) 
     await page.goto(path);
     await expect(page.getByRole('heading', { name: heading })).toBeVisible();
   }
+
+  // Phase 7-8 pages render without a server error, including their forms
+  await page.goto('/dashboard/calendar');
+  await expect(page.getByRole('heading', { name: 'Takvim', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Takvimi indir (.ics)' })).toBeVisible();
+
+  await page.goto('/dashboard/follow-ups');
+  await expect(page.getByRole('heading', { name: 'Takip mesajları' })).toBeVisible();
+
+  await page.goto('/dashboard/finance');
+  await expect(page.getByRole('heading', { name: 'Finans & Raporlama' })).toBeVisible();
+
+  // ICS export route returns a real calendar file, not an error page
+  const icsResponse = await page.request.get('/api/calendar/ics');
+  expect(icsResponse.status()).toBe(200);
+  expect(icsResponse.headers()['content-type']).toContain('text/calendar');
+  expect(await icsResponse.text()).toContain('BEGIN:VCALENDAR');
 });

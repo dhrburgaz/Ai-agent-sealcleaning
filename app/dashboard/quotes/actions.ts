@@ -55,6 +55,8 @@ export async function markQuoteSentAction(formData: FormData): Promise<void> {
     entityId: id,
   });
 
+  await eventBus.emit('quote.sent', { leadId: quote.leadId, quoteId: id });
+
   revalidatePath('/dashboard/quotes');
 }
 

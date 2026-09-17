@@ -1,6 +1,6 @@
 {
   "lastUpdated": "2026-09-17",
-  "phase": "1-6",
+  "phase": "1-10",
   "specSection": "59. TESTS",
   "legend": {
     "done": "Implemented and passing in the automated suite",
@@ -31,8 +31,8 @@
     { "requirement": "rental vs extra labour scenario", "status": "done", "test": "tests/unit/equipment.test.ts" },
     { "requirement": "actual costing", "status": "done", "test": "tests/unit/costing.test.ts" },
     { "requirement": "no silent production-rate calibration", "status": "done", "test": "tests/unit/labour.test.ts" },
-    { "requirement": "calendar conflict", "status": "deferred", "note": "Calendar UI/logic remains Phase 7 per master-spec phase order (schema exists: appointments, calendar_events)" },
-    { "requirement": "follow-up opt-out", "status": "done", "test": "tests/unit/follow-up.test.ts" },
+    { "requirement": "calendar conflict", "status": "done", "test": "tests/unit/scheduling-calendar.test.ts (findSchedulingConflicts, travel-buffer overlap and back-to-back edge cases)" },
+    { "requirement": "follow-up opt-out", "status": "done", "test": "tests/unit/follow-up.test.ts, tests/integration/orchestration.test.ts (quote.sent handler skips scheduling for an opted-out customer)" },
     { "requirement": "secret redaction", "status": "done", "test": "tests/unit/redaction.test.ts" },
     { "requirement": "upload validation", "status": "done", "test": "tests/unit/upload-validation.test.ts" },
     { "requirement": "audit log", "status": "done", "test": "tests/integration/lead-lifecycle.test.ts, tests/integration/orchestration.test.ts (agent_runs audit trail)" },
@@ -52,17 +52,28 @@
     { "requirement": "context pack is compact structured summary, not raw conversation history", "status": "done", "test": "tests/unit/context-pack.test.ts" },
     { "requirement": "supplier URL fetch rejects localhost/private-IP targets (SSRF)", "status": "done", "test": "tests/unit/url-price-fetcher.test.ts" },
     { "requirement": "supplier URL fetch never fabricates a price without a source+timestamp", "status": "done", "test": "tests/unit/url-price-fetcher.test.ts" },
-    { "requirement": "voice I/O degrades to text-only when Web Speech API is unsupported", "status": "done", "test": "components/dashboard/AskBeyza.tsx feature-detects SpeechRecognition/speechSynthesis; tests/e2e/smoke.spec.ts exercises the text path unconditionally" }
+    { "requirement": "voice I/O degrades to text-only when Web Speech API is unsupported", "status": "done", "test": "components/dashboard/AskBeyza.tsx feature-detects SpeechRecognition/speechSynthesis; tests/e2e/smoke.spec.ts exercises the text path unconditionally" },
+    { "requirement": "ICS export/import round-trips events correctly (RFC 5545)", "status": "done", "test": "tests/unit/ics.test.ts" },
+    { "requirement": "appointment window validation rejects past/inverted slots", "status": "done", "test": "tests/unit/scheduling-calendar.test.ts" },
+    { "requirement": "follow-up sequencing schedules step 1 at +3d and step 2 at +7d, then stops", "status": "done", "test": "tests/unit/follow-up.test.ts (computeNextFollowUpDate), tests/integration/orchestration.test.ts (quote.sent handler)" },
+    { "requirement": "finance report never divides by zero on a revenue-free month/no decided leads", "status": "done", "test": "tests/unit/finance-report.test.ts" },
+    { "requirement": "win rate and profit-floor achievement computed only from real completed jobs/decided leads, never a forecast", "status": "done", "test": "tests/unit/finance-report.test.ts, app/dashboard/finance/page.tsx" },
+    { "requirement": "PWA installable (manifest + service worker) without caching stale dynamic dashboard data", "status": "done", "test": "public/manifest.webmanifest, public/sw.js (only caches /icon.svg and /manifest.webmanifest; verified manually — see docs/PWA.md)" },
+    { "requirement": "login brute-force rate limiting locks out after repeated failures and resets on success", "status": "done", "test": "tests/unit/login-rate-limit.test.ts" }
   ],
   "endToEndSmoke": {
     "status": "done",
     "location": "tests/e2e/smoke.spec.ts",
-    "coverage": "setup wizard -> login -> lead creation -> dedupe -> 40m2 estimate -> QA-gated quote -> PDF generation -> Agent 06 photo section renders -> lead-scoped Ask Beyza -> inventory/AI-usage/suppliers pages render",
-    "runNote": "Requires a running dev server against a fresh, empty database and the pre-installed Chromium (PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers). Not part of `npm run check`."
+    "coverage": "setup wizard -> login -> lead creation -> dedupe -> 40m2 estimate -> QA-gated quote -> PDF generation -> Agent 06 photo section renders -> lead-scoped Ask Beyza -> inventory/AI-usage/suppliers pages render -> calendar/follow-ups/finance pages render -> ICS export route returns a real calendar file",
+    "runNote": "Requires a running dev server against a fresh, empty database and the pre-installed Chromium (PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers). Not part of `npm run check`, but now also wired into .github/workflows/ci.yml as a separate CI job."
   },
   "checkPipeline": {
     "command": "npm run check",
-    "covers": ["eslint", "tsc --noEmit", "vitest run (unit+integration, 213 tests / 40 files)", "next build"],
+    "covers": ["eslint", "tsc --noEmit", "vitest run (unit+integration, 242 tests / 44 files)", "next build"],
     "lastKnownStatus": "green"
+  },
+  "ci": {
+    "location": ".github/workflows/ci.yml",
+    "jobs": ["check (lint+typecheck+test+build)", "e2e (production build + Playwright smoke test against a fresh migrated database)"]
   }
 }
