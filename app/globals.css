@@ -2,51 +2,130 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Ay-Yıldız Dark Red — default internal theme (section 6.1) */
+/* Ay-Yıldız Dark Red — default internal theme (section 6.1). Redesigned for a
+   futuristic AI-command-center identity (see docs/DESIGN_SYSTEM.md): deeper
+   black, more graphite/silver depth, a distinct crimson glow token separate
+   from the flat accent color so components can layer light without fighting
+   contrast requirements. */
 :root,
 [data-theme='ay-yildiz-dark-red'] {
-  --color-surface: 10 9 11;
-  --color-surface-raised: 20 17 19;
-  --color-border: 54 32 36;
-  --color-accent: 168 22 32;
+  --color-surface: 8 7 9;
+  --color-surface-raised: 18 15 17;
+  --color-graphite: 28 24 27;
+  --color-border: 58 34 38;
+  --color-accent: 176 24 34;
   --color-accent-soft: 90 20 26;
+  --color-glow: 214 40 52;
   --color-ink: 240 236 233;
   --color-muted: 168 160 158;
-  --color-gold: 196 164 92;
+  --color-silver: 196 198 204;
+  --color-gold: 205 172 96;
 }
 
 [data-theme='classic-premium-dark'] {
   --color-surface: 15 16 20;
   --color-surface-raised: 24 26 32;
+  --color-graphite: 30 32 40;
   --color-border: 45 48 58;
   --color-accent: 90 110 220;
   --color-accent-soft: 50 60 120;
+  --color-glow: 110 130 240;
   --color-ink: 235 237 242;
   --color-muted: 150 155 168;
+  --color-silver: 200 203 212;
   --color-gold: 180 180 190;
 }
 
 [data-theme='neutral-business-light'] {
   --color-surface: 250 250 251;
   --color-surface-raised: 255 255 255;
+  --color-graphite: 238 238 241;
   --color-border: 224 224 228;
   --color-accent: 37 99 235;
   --color-accent-soft: 219 234 254;
+  --color-glow: 37 99 235;
   --color-ink: 24 24 27;
   --color-muted: 100 100 110;
+  --color-silver: 148 148 158;
   --color-gold: 202 138 4;
 }
 
-/* Customer Demo Mode overlays a calmer, neutral look regardless of the base theme,
-   per section 6.4: no internal Ay-Yıldız aesthetic shown to a customer/partner. */
-[data-demo-mode='true'] {
-  --color-accent: 37 99 235;
-  --color-accent-soft: 219 234 254;
-}
+/* Customer Demo Mode (section 6.4/10): sensitive DATA is masked by
+   lib/theme/demo-mode.ts regardless of visuals. The base theme's premium
+   look is intentionally KEPT (not swapped to a generic neutral palette) —
+   the master spec's Phase 10 instruction is for this mode to be the
+   strongest demonstration of the product, not a watered-down one. */
 
 body {
   background-color: rgb(var(--color-surface));
   color: rgb(var(--color-ink));
+}
+
+/* ---- Futuristic AI command-center design system (docs/DESIGN_SYSTEM.md) ---- */
+
+.glass-panel {
+  background: linear-gradient(
+    180deg,
+    rgb(var(--color-surface-raised) / 0.72),
+    rgb(var(--color-surface) / 0.72)
+  );
+  border: 1px solid rgb(var(--color-border) / 0.8);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.hud-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(var(--color-glow) / 0.55) 50%,
+    transparent
+  );
+}
+
+.grid-overlay {
+  background-image: linear-gradient(rgb(var(--color-silver) / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--color-silver) / 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.radial-core-glow {
+  background: radial-gradient(
+    ellipse at center,
+    rgb(var(--color-glow) / 0.22),
+    transparent 65%
+  );
+}
+
+.text-glow {
+  text-shadow: 0 0 18px rgb(var(--color-glow) / 0.55);
+}
+
+/* Respect prefers-reduced-motion (section 18/23): the futuristic identity
+   must never be at the cost of accessibility or a usable experience for
+   users who've asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-core-rotate-slow,
+  .animate-core-rotate-reverse,
+  .animate-core-pulse,
+  .animate-core-ping-slow,
+  .animate-hud-scan,
+  .animate-fade-in-up {
+    animation: none !important;
+  }
+}
+
+/* Same treatment, opted into explicitly via Settings > Beyza Ayarları >
+   Animasyon kalitesi > Pil tasarrufu (components/beyza/AnimationQualityGate.tsx),
+   independent of the OS-level prefers-reduced-motion signal. */
+.beyza-battery-saver .animate-core-rotate-slow,
+.beyza-battery-saver .animate-core-rotate-reverse,
+.beyza-battery-saver .animate-core-pulse,
+.beyza-battery-saver .animate-core-ping-slow,
+.beyza-battery-saver .animate-hud-scan,
+.beyza-battery-saver .animate-fade-in-up {
+  animation: none !important;
 }
 
 .mosque-skyline-backdrop {

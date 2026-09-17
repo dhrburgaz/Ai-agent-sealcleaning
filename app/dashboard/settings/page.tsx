@@ -10,7 +10,7 @@ export default async function SettingsPage() {
     <div className="max-w-2xl space-y-8">
       <h1 className="text-2xl font-semibold text-ink">Ayarlar</h1>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gold">Fiyatlandırma politikası</h2>
         <form action={updateCompanySettingsAction} className="grid gap-4 sm:grid-cols-2">
           <Field label="Hedef kâr marjı (%)" name="targetMarginPercent" defaultValue={(company.defaultTargetMarginRate * 100).toString()} />
@@ -31,7 +31,7 @@ export default async function SettingsPage() {
         </form>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gold">AI bütçesi</h2>
         <p className="mb-3 text-sm text-muted">
           Varsayılan €0. Ücretli AI çağrıları bütçe olmadan otomatik olarak engellenir (bkz. docs/AI_COST_CONTROL.md).

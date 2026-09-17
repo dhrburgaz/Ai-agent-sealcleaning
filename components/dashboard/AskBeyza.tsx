@@ -1,82 +1,53 @@
 'use client';
 
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useActionState, useEffect, useRef, useState } from 'react';
 import { askBeyzaAction, type AskBeyzaState } from '@/app/dashboard/actions';
+import { AICore } from '@/components/beyza/core/AICore';
+import type { BeyzaCoreState } from '@/components/beyza/types';
+import {
+  getSpeechRecognitionCtor,
+  speakTurkish,
+  getTtsEnabled,
+  setTtsEnabled as persistTtsEnabled,
+  type SpeechRecognitionLike,
+} from '@/lib/beyza-voice';
 
 const initialState: AskBeyzaState = {};
 
-// Section 28 — browser-native voice I/O (Web Speech API). Entirely client-side,
-// zero cost, no paid API: feature-detected and gracefully hidden when the
-// browser doesn't support it, per section 2's "system remains useful with
-// zero AI keys" rule extended to "and with no speech support either."
-interface SpeechRecognitionResultLike {
-  results: { [index: number]: { [index: number]: { transcript: string } } };
-}
-interface SpeechRecognitionLike {
-  lang: string;
-  interimResults: boolean;
-  maxAlternatives: number;
-  onresult: ((event: SpeechRecognitionResultLike) => void) | null;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-}
-
-function getSpeechRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
-  if (typeof window === 'undefined') return null;
-  const w = window as unknown as {
-    SpeechRecognition?: new () => SpeechRecognitionLike;
-    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
-  };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
-
-function speakTurkish(text: string) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'tr-TR';
-  const voices = window.speechSynthesis.getVoices();
-  const turkishVoice =
-    voices.find((v) => v.lang.startsWith('tr') && /male|erkek/i.test(v.name)) ??
-    voices.find((v) => v.lang.startsWith('tr'));
-  if (turkishVoice) utterance.voice = turkishVoice;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utterance);
-}
-
 export function AskBeyza({ leadId }: { leadId?: string }) {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState(askBeyzaAction, initialState);
   const [commandText, setCommandText] = useState('');
   const [listening, setListening] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
-  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [ttsEnabled, setTtsEnabledState] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     setVoiceSupported(getSpeechRecognitionCtor() !== null);
-    try {
-      setTtsEnabled(localStorage.getItem('beyza_tts_enabled') === 'true');
-    } catch {
-      // localStorage can throw in a private window; TTS just stays off.
-    }
+    setTtsEnabledState(getTtsEnabled());
   }, []);
 
   useEffect(() => {
     if (state.answer && ttsEnabled) {
-      speakTurkish(state.answer);
+      speakTurkish(state.answer, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
     }
   }, [state.answer, ttsEnabled]);
 
+  useEffect(() => {
+    if (!state.navigateTo) return;
+    const t = setTimeout(() => router.push(state.navigateTo!), 900);
+    return () => clearTimeout(t);
+  }, [state.navigateTo, router]);
+
   function toggleTts() {
     const next = !ttsEnabled;
-    setTtsEnabled(next);
-    try {
-      localStorage.setItem('beyza_tts_enabled', String(next));
-    } catch {
-      // Best-effort preference only.
-    }
+    setTtsEnabledState(next);
+    persistTtsEnabled(next);
   }
 
   function startListening() {
@@ -105,20 +76,30 @@ export function AskBeyza({ leadId }: { leadId?: string }) {
     setListening(false);
   }
 
+  const coreState: BeyzaCoreState = speaking ? 'speaking' : listening ? 'listening' : pending ? 'thinking' : 'ready';
+
   return (
-    <div className="rounded-2xl border border-border bg-surface-raised/80 p-6 shadow-premium backdrop-blur">
+    <div className="glass-panel rounded-2xl p-6 shadow-premium">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-gold">Beyza&apos;ya Sor</h2>
-        {voiceSupported && (
-          <button
-            type="button"
-            onClick={toggleTts}
-            className={`text-xs ${ttsEnabled ? 'text-accent' : 'text-muted'} hover:underline`}
-            aria-pressed={ttsEnabled}
-          >
-            {ttsEnabled ? '🔊 Sesli yanıt açık' : '🔇 Sesli yanıt kapalı'}
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <AICore state={coreState} size="sm" />
+          <h2 className="text-sm font-medium uppercase tracking-wide text-gold">Beyza&apos;ya Sor</h2>
+        </div>
+        <div className="flex items-center gap-3">
+          {voiceSupported && (
+            <button
+              type="button"
+              onClick={toggleTts}
+              className={`text-xs ${ttsEnabled ? 'text-accent' : 'text-muted'} hover:underline`}
+              aria-pressed={ttsEnabled}
+            >
+              {ttsEnabled ? '🔊 Sesli yanıt açık' : '🔇 Sesli yanıt kapalı'}
+            </button>
+          )}
+          <Link href="/dashboard/beyza" className="text-xs text-muted hover:text-accent hover:underline">
+            Tam ekran sesli mod →
+          </Link>
+        </div>
       </div>
       <form ref={formRef} action={formAction} className="flex gap-2">
         {leadId && <input type="hidden" name="leadId" value={leadId} />}
@@ -128,7 +109,7 @@ export function AskBeyza({ leadId }: { leadId?: string }) {
           required
           value={commandText}
           onChange={(e) => setCommandText(e.target.value)}
-          className="flex-1 rounded-lg border border-border bg-surface px-4 py-3 text-ink outline-none focus:border-accent"
+          className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-4 py-3 text-ink outline-none focus:border-accent"
         />
         {voiceSupported && (
           <button
@@ -146,7 +127,7 @@ export function AskBeyza({ leadId }: { leadId?: string }) {
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-accent px-5 py-3 font-medium text-white hover:opacity-90 disabled:opacity-50"
+          className="rounded-lg bg-accent px-5 py-3 font-medium text-white shadow-glow-sm hover:opacity-90 disabled:opacity-50"
         >
           {pending ? '…' : 'Sor'}
         </button>

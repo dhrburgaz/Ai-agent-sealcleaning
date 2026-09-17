@@ -32,7 +32,7 @@ export default async function AiUsagePage() {
       </section>
 
       {stats.byProvider.length > 0 && (
-        <section className="rounded-xl border border-border bg-surface-raised p-5">
+        <section className="glass-panel rounded-xl p-5">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Sağlayıcıya göre</h2>
           <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase text-muted">
@@ -55,7 +55,7 @@ export default async function AiUsagePage() {
         </section>
       )}
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Son ajan çalışmaları (audit)</h2>
         <ul className="space-y-1 text-xs text-muted">
           {recentRuns.map((run) => (
@@ -74,7 +74,7 @@ export default async function AiUsagePage() {
 
 function StatCard({ label, value, warn }: { label: string; value: string | number; warn?: boolean }) {
   return (
-    <div className="rounded-xl border border-border bg-surface-raised p-4">
+    <div className="glass-panel rounded-xl p-4">
       <div className="text-xs uppercase tracking-wide text-muted">{label}</div>
       <div className={`mt-1 text-xl font-semibold ${warn ? 'text-accent' : 'text-ink'}`}>{value}</div>
     </div>

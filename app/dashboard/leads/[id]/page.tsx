@@ -100,7 +100,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         ))}
       </div>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Müşteri iletişimi</h2>
         <div className="mb-4 space-y-2">
           {threadMessages.map((m) => (
@@ -143,11 +143,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         </form>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">
           Fotoğraflar (Agent 06)
         </h2>
-        <form action={uploadPhotoAction} className="mb-4 flex flex-wrap items-center gap-2" encType="multipart/form-data">
+        <form action={uploadPhotoAction} className="mb-4 flex flex-wrap items-center gap-2">
           <input type="hidden" name="leadId" value={lead.id} />
           <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/heic" required className="text-sm text-ink" />
           <button type="submit" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90">
@@ -228,7 +228,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">
           40 m² Keramik Teras Şablonu — Fiyat Teklifi
         </h2>
@@ -312,7 +312,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       </section>
 
       {leadQuotes.length > 0 && (
-        <section className="rounded-xl border border-border bg-surface-raised p-5">
+        <section className="glass-panel rounded-xl p-5">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Teklifler</h2>
           <ul className="space-y-1 text-sm">
             {leadQuotes.map((q) => (
@@ -326,7 +326,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         </section>
       )}
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Geçmiş (audit)</h2>
         <ul className="space-y-1 text-xs text-muted">
           {events.map((e) => (

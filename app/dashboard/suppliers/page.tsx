@@ -17,7 +17,7 @@ export default async function SuppliersPage() {
         <p className="text-sm text-muted">Kanıtsız &quot;indirim&quot; etiketi kabul edilmez. Her fiyat kaynağı ve tarihiyle görünür.</p>
       </div>
 
-      <form action={addSupplierObservationAction} className="grid gap-3 rounded-xl border border-border bg-surface-raised p-5 sm:grid-cols-3">
+      <form action={addSupplierObservationAction} className="grid gap-3 glass-panel rounded-xl p-5 sm:grid-cols-3">
         <input name="supplierName" placeholder="Tedarikçi" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
         <input name="material" placeholder="Malzeme" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
         <input name="unit" placeholder="Birim" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
@@ -30,7 +30,7 @@ export default async function SuppliersPage() {
         </button>
       </form>
 
-      <details className="rounded-xl border border-border bg-surface-raised p-5">
+      <details className="glass-panel rounded-xl p-5">
         <summary className="cursor-pointer text-sm font-medium text-ink">
           + URL&apos;den fiyat çek (owner_pasted_url — otomatik, ücretsiz, doğrulanmamış)
         </summary>

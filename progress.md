@@ -20,14 +20,29 @@ triggers/structured I/O/confidence/caching/fallbacks/audit, never fake UI
 cards or always-on chat loops, never a paid API call, and never a regression
 to Phase 1–3 behavior. Done and verified.
 
-The Phase 7–10 build (this session) was scoped by the user's explicit
-instruction to "finish everything now": calendar/scheduling with ICS
-export, automated follow-up sequencing, full finance/BI reporting, PWA
-packaging, a review of the Phase 9 connector docs, and a Phase 10 pass
-(CI workflow, richer demo data, security hardening). Same non-negotiables
-throughout: €0 AI budget, no paid dependency, no fabricated data, every new
-agent capability has triggers/structured I/O/audit, and the full Phase 1-6
-test suite kept passing throughout. Done and verified below.
+The Phase 7–10 build was scoped by the user's explicit instruction to
+"finish everything now": calendar/scheduling with ICS export, automated
+follow-up sequencing, full finance/BI reporting, PWA packaging, a review of
+the Phase 9 connector docs, and a Phase 10 pass (CI workflow, richer demo
+data, security hardening). Same non-negotiables throughout: €0 AI budget, no
+paid dependency, no fabricated data, every new agent capability has
+triggers/structured I/O/audit, and the full Phase 1-6 test suite kept
+passing throughout. Done and verified.
+
+**A major UX/UI + AI-interaction redesign (this session)** was then
+explicitly requested on top of the finished backend: the original UI looked
+like a generic dark admin dashboard, and the instruction was to rebuild the
+*experience* — an original, futuristic, Ay-Yıldız-identity AI command
+center with a living central AI presence, a cinematic boot sequence, a
+full-screen voice/call mode, an Agent Network visualization, and premium
+lead intelligence cards — while leaving 100% of the working backend (pricing
+engine, €1,200 profit floor, CRM, database, 20-agent architecture, €0-budget
+protections, audit trail, all existing passing tests) untouched. This is
+documented in full in its own section below and in `docs/DESIGN_SYSTEM.md`
+/ `docs/AVATAR.md`. Done and verified, with an honestly-scoped list of what
+was **not** attempted (a real visual calendar grid, interactive pricing
+scenarios, a supplier "radar" stat-card framing) rather than a shallow pass
+at all of it.
 
 ## What's actually built and working (not scaffolding)
 
@@ -304,6 +319,135 @@ test suite kept passing throughout. Done and verified below.
   pre-existing high-severity advisory (transitive `postcss` inside Next.js's
   own build tooling) is unchanged — see "Known accepted risks" below.
 
+## UX/UI + AI-interaction redesign (this session)
+
+Full detail in `docs/DESIGN_SYSTEM.md` (visual system) and `docs/AVATAR.md`
+(AI Core/avatar architecture). Summary by redesign brief section:
+
+- **Design system**: new CSS tokens (`--color-glow`, `--color-graphite`,
+  `--color-silver`) layered onto the existing 3-theme system, `.glass-panel`/
+  `.hud-divider`/`.grid-overlay`/`.radial-core-glow` utility classes, an
+  original crescent+star emblem component (`AyYildizEmblem`). Every existing
+  Phase 1-6 page got the glass-panel treatment on its section containers —
+  visual only, no layout/logic change.
+- **Central AI Core** (`components/beyza/core/AICore.tsx`): a layered SVG
+  (rotating rings, pulsing core, the emblem at center) with 9 real states
+  (sleeping/initializing/ready/listening/thinking/executing/speaking/
+  warning/error). Listening is driven by real microphone amplitude
+  (`useMicLevel`, a Web Audio `AnalyserNode`) — not a canned loop. Speaking
+  shows an approximate voice waveform (staggered bar animation), honestly
+  documented as approximate since the browser's `SpeechSynthesisUtterance`
+  exposes no real audio buffer to analyze.
+- **Cinematic boot sequence** (`components/beyza/boot/`): a full boot
+  (module-status checklist, "Kimlik doğrulandı." / "Hoş geldiniz.") on
+  login/setup completion (`?boot=full`), an abbreviated "wake" on a normal
+  return, both skippable, both respecting `prefers-reduced-motion`, gated
+  once per browser session (`sessionStorage`) so it never repeats on
+  ordinary navigation.
+- **Command Center redesign**: `CommandCenterHero` puts the AI Core at the
+  center with a real, once-per-session spoken briefing (real DB data, never
+  a fabricated "impressive activity" script), plus a genuine live activity
+  feed (`lib/server/activity-feed.ts`) rendering real `agent_runs` rows —
+  empty state renders honestly when nothing has happened yet.
+- **Full-screen voice/call mode** ("Beyza'yı Ara",
+  `app/dashboard/beyza/`): connecting/connected states with a call timer,
+  continuous listen→answer→speak→re-listen loop (no press-to-talk per
+  sentence), a text fallback, mic-mute/speaker/end-call controls, and a
+  live display of which real agent(s) the current command invoked
+  (`lib/agents/intent-agent-map.ts`, a truthful map to the actual
+  deterministic code path each intent runs, not a decorative list).
+  Explicitly distinct from a real PSTN phone call, which remains out of
+  scope (needs a paid telephony provider — see `docs/VOICE.md`).
+- **Agent Network** (`app/dashboard/agents/`): exactly 20 agents as an
+  orbit around Beyza, grouped by category
+  (`lib/agents/agent-groups.ts`), each node's state derived from its most
+  recent real `agent_runs` row (`lib/server/agent-network.ts`) — never
+  fabricated activity. Click a node for its purpose, last run, input/output
+  summary, confidence, provider/cache-hit/cost.
+- **AI-controlled navigation**: `askBeyzaAction` gained a `navigateTo` field
+  and three new intents (`open_hottest_lead`, `open_quote_for_customer`,
+  and an improved `tomorrow_availability` now backed by real `appointments`
+  data instead of the old Phase 4-6 "calendar not built yet" placeholder) —
+  "En sıcak lead'i aç." genuinely opens that lead's page.
+- **Avatar renderer abstraction** (`components/beyza/avatar/
+  AvatarRenderer.tsx`, `docs/AVATAR.md`): dispatches by style
+  (`ai_core` implemented; `cinematic_human` documented but deliberately
+  NOT implemented — an original animated human character is a dedicated
+  illustration/animation project, and faking one with a stock image would
+  misrepresent what's running). Settings page
+  (`app/dashboard/settings/beyza/`) for avatar on/off, style, speaking rate,
+  sound level, animation quality (a real "pil tasarrufu"/battery-saver
+  toggle disables the core's animations, `AnimationQualityGate.tsx`),
+  auto-greeting, boot mode — all client-side preferences
+  (`lib/beyza-preferences.ts`), no DB round-trip needed for UI prefs.
+- **Sound system** (`lib/beyza-sound.ts`): short, original, procedurally
+  generated tones (Web Audio oscillators, no audio files, no copyrighted
+  sounds), silent until a real user interaction has occurred (pointerdown/
+  keydown gate) and until the owner has explicitly enabled a sound level
+  above "off".
+- **Lead intelligence cards** (`app/dashboard/leads/page.tsx`): replaced the
+  flat list rows with cards showing customer/location/service/status/
+  temperature/expected value & profit/confidence/photo count/next site
+  visit/last-message age/next-best-action, computed from real
+  estimates/attachments/appointments/messages data.
+- **Mobile UX**: a dedicated bottom nav (`components/dashboard/MobileNav.tsx`)
+  with a prominent elevated central Beyza button opening call mode, hidden
+  specifically on the call-mode route itself (it's a full-screen surface
+  with its own end-call control; the nav would otherwise render on top of
+  its mic/speaker/end-call buttons — found and fixed via an actual mobile
+  viewport screenshot, not just code review).
+- **Demo Mode**: the visual theme is no longer swapped to a generic
+  neutral/blue palette in Customer Demo Mode — the premium look is kept
+  (matching the redesign brief's explicit "strongest demonstration of the
+  product" instruction), while sensitive *data* masking
+  (`lib/theme/demo-mode.ts`) is completely unchanged.
+
+**Deliberately not done** (honestly scoped, not an oversight — see
+`docs/DESIGN_SYSTEM.md`'s "Known gaps" for the full reasoning): a real
+day/week/agenda calendar grid with draggable timeline blocks (the calendar
+page kept its list+forms layout, just reskinned); interactive pricing
+"what-if" scenario sliders on the ceramic-terrace estimate form; a
+"Tedarik Radarı" stat-card framing for the suppliers page (still a table,
+though it already showed confidence/staleness per row from Phase 6); a real
+animated human avatar (`Cinematic2DAvatarRenderer`, architected in
+`docs/AVATAR.md` but not built).
+
+### Real bugs found and fixed while verifying this redesign in an actual browser
+
+1. **Hydration mismatch on the Agent Network page.** The orbit layout's
+   `left`/`top` inline-style percentages were computed via raw
+   `Math.cos`/`Math.sin` and interpolated into a template string; on a
+   fresh page load React logged a server/client hydration mismatch because
+   the two environments' floating-point `toString()` output didn't match
+   digit-for-digit. Fixed by rounding to a fixed precision
+   (`Math.round(x * 1000) / 1000`) before rendering, so both sides always
+   produce byte-identical strings — never rely on raw float-to-string output
+   being deterministic across two separate JS engine instances.
+2. **A real double-listening race in the call screen.** `BeyzaCallScreen`
+   had two separate code paths that could call `startListening()` for the
+   same turn — an explicit call after speaking finished, and a `useEffect`
+   reacting to the same state change — occasionally starting two
+   `SpeechRecognition` instances back to back. In a sandboxed/headless
+   browser environment (no real mic, no real speech backend) this
+   manifested as an immediate spurious recognition error that could
+   overwrite the visible transcript window before the first turn's answer
+   was ever seen. Fixed by making the `useEffect` the single source of
+   truth for "should we be listening now" and removing the duplicate
+   explicit calls — a real correctness fix (a race that shouldn't exist),
+   not merely a test workaround.
+3. **A stray `encType="multipart/form-data"` on the photo-upload form**
+   (pre-existing from Phase 4-6, only surfaced once this session's e2e test
+   started asserting zero console errors across the full flow) — React
+   warns that a form using a Server Action as its `action` sets `encType`
+   automatically and an explicit one is ignored/conflicting. Fixed by
+   removing the redundant attribute.
+4. **Mobile bottom nav rendering on top of the full-screen call mode** —
+   both are `fixed ... z-40`, and the nav painted later in the DOM. Fixed by
+   hiding `MobileNav` specifically on the `/dashboard/beyza` route, found
+   via an actual mobile-viewport screenshot (not visible from source review
+   alone — this is exactly the kind of bug `CLAUDE.md`'s "actually run it"
+   rule exists to catch).
+
 ## Bugs found and fixed during the build (via actual browser testing, not just `npm run check`)
 
 `npm run check` (lint + typecheck + tests + build) was green well before the
@@ -338,29 +482,40 @@ hardcoding zero.
 ## Verification
 
 ```
-npm run check   →  lint ✓  typecheck ✓  242 unit/integration tests (44 files) ✓  production build ✓
+npm run check   →  lint ✓  typecheck ✓  243 unit/integration tests (45 files) ✓  production build ✓
 ```
 
-Plus a real end-to-end run: fresh DB → setup wizard → login → lead creation →
-dedupe → 40 m² estimate → QA-gated quote → downloadable PDF → Agent 06 photo
-section renders → lead-scoped Ask Beyza reply → `/dashboard/inventory`,
-`/dashboard/settings/ai-usage`, `/dashboard/suppliers`, `/dashboard/calendar`,
-`/dashboard/follow-ups`, `/dashboard/finance` all render without a server
-error, plus the `/api/calendar/ics` route returning a real
-`BEGIN:VCALENDAR`/`text/calendar` response — driven through actual Chromium
-via Playwright (`tests/e2e/smoke.spec.ts`), not just asserted by the build.
+Plus a real end-to-end run: fresh DB → setup wizard → login → cinematic boot
+sequence → lead creation → dedupe → 40 m² estimate → QA-gated quote →
+downloadable PDF → Agent 06 photo section renders → lead-scoped Ask Beyza
+reply → `/dashboard/inventory`, `/dashboard/settings/ai-usage`,
+`/dashboard/suppliers`, `/dashboard/calendar`, `/dashboard/follow-ups`,
+`/dashboard/finance` all render without a server error, the `/api/calendar/ics`
+route returning a real `BEGIN:VCALENDAR`/`text/calendar` response, the Agent
+Network showing exactly 20 agents, the full-screen call mode answering a
+typed command through the real conversation engine, and zero console/page
+errors across the entire run (asserted explicitly, not just absence of a
+crash) — driven through actual Chromium via Playwright
+(`tests/e2e/smoke.spec.ts`), not just asserted by the build. A second test
+confirms `prefers-reduced-motion` actually disables the AI Core's CSS
+animations.
 
-Additionally verified by hand (not part of the committed test suite, but
-actually run this session against a fresh migrated database with
-`npm run seed`, logged in as the DEMO owner, and read back via
-`page.textContent`): the calendar page shows the seeded confirmed site-visit
-appointment and lets an unscheduled job be picked from a real dropdown; the
-follow-ups page shows the seeded due reminder; the finance page's win rate
-(100%), profit-floor achievement (100%), and monthly gross-profit/margin
-numbers match the seeded job's real numbers by hand calculation
-(€3,200 revenue − €1,970 actual cost = €1,230 gross profit, 38.4% margin);
-and the inventory page correctly flags both seeded items as low stock against
-their reorder thresholds.
+Additionally verified by hand against a fresh migrated + seeded database,
+logged in as the DEMO owner, with real browser screenshots reviewed at
+desktop (1440×900), tablet (834×1112), and mobile (390×844) viewports: the
+calendar page shows the seeded confirmed site-visit appointment and lets an
+unscheduled job be picked from a real dropdown; the follow-ups page shows
+the seeded due reminder; the finance page's win rate (100%), profit-floor
+achievement (100%), and monthly gross-profit/margin numbers match the
+seeded job's real numbers by hand calculation (€3,200 revenue − €1,970
+actual cost = €1,230 gross profit, 38.4% margin); the inventory page
+correctly flags both seeded items as low stock against their reorder
+thresholds; the boot sequence, Command Center, Agent Network, call mode,
+and lead intelligence cards were all visually reviewed against the redesign
+brief's own acceptance question ("does this look like a generic admin
+dashboard, or an original futuristic AI command system?") — two real UI
+bugs were found this way (see "Real bugs found and fixed" above) that no
+amount of source review would have caught.
 
 **Not verified**: `docker build` — Docker is installed in this environment but
 there is no daemon running, so the Dockerfile/compose files are written and
@@ -416,15 +571,30 @@ None of these are stubbed with fake UI — see `docs/AGENTS.md`,
 `docs/SUPPLIER_INTELLIGENCE.md`, and `docs/AI_COST_CONTROL.md` for exactly
 what exists vs. what's genuinely not started, agent by agent.
 
+**UX/UI redesign gaps** (see `docs/DESIGN_SYSTEM.md`'s "Known gaps" for the
+full reasoning): the calendar page was not rebuilt into a real day/week/
+agenda visual grid (still list+forms, reskinned); the pricing/estimate form
+has no interactive "what-if" scenario sliders; the suppliers page has no
+"Tedarik Radarı" stat-card framing (still a table). A real animated human
+avatar (`Cinematic2DAvatarRenderer`) is architected (`docs/AVATAR.md`) but
+not implemented — selecting it in Settings falls back to the AI Core with a
+dev-console notice, never a silent claim that a human avatar is rendering.
+
 ## Resuming this work
 
 1. Read `CLAUDE.md` first.
 2. `npm run check` to confirm the baseline (as of this update: lint ✓,
-   typecheck ✓, 242 tests ✓, build ✓, plus the extended
-   `tests/e2e/smoke.spec.ts` passing against a fresh DB, and
-   `.github/workflows/ci.yml` now running both automatically on push/PR).
-3. Everything in "What's deferred" above is a deliberate scope boundary, not
+   typecheck ✓, 243 tests ✓, build ✓, plus the extended
+   `tests/e2e/smoke.spec.ts` — including the redesign's boot/Agent Network/
+   call-mode/zero-console-errors assertions and a `prefers-reduced-motion`
+   test — passing against a fresh DB, and `.github/workflows/ci.yml`
+   running both automatically on push/PR).
+3. Read `docs/DESIGN_SYSTEM.md` and `docs/AVATAR.md` before touching any
+   `components/beyza/*` file — they explain the state model (`BeyzaCoreState`)
+   and renderer abstraction that the boot sequence, Command Center, call
+   mode, and Agent Network all share.
+4. Everything in "What's deferred" above is a deliberate scope boundary, not
    an in-progress phase — pick one only if the user explicitly asks for it
    (it likely means adding a paid dependency, building a browser extension,
    or another security-sensitive feature that genuinely needs sign-off).
-4. Keep this file and `tests.json` current as you go.
+5. Keep this file and `tests.json` current as you go.

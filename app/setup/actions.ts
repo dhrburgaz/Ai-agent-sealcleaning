@@ -164,5 +164,5 @@ export async function completeSetupAction(
     await session.save();
   }
 
-  redirect('/dashboard');
+  redirect('/dashboard?boot=full');
 }

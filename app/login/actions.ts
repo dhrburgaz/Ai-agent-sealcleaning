@@ -46,7 +46,9 @@ export async function loginAction(_prevState: LoginState, formData: FormData): P
   session.lastSeenAt = Date.now();
   await session.save();
 
-  redirect('/dashboard');
+  // ?boot=full triggers the full cinematic boot sequence once, right after a
+  // real login — see components/beyza/boot/BootGate.tsx.
+  redirect('/dashboard?boot=full');
 }
 
 export async function logoutAction(): Promise<void> {

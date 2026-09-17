@@ -35,7 +35,7 @@ export default async function FollowUpsPage() {
         {company?.approvalMode === 'draft_only' && 'Şu an Draft Only modundasınız: hiçbir mesaj onaysız gönderilmez.'}
       </p>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Gecikmiş / bugün ({due.length})</h2>
         {due.length === 0 && <p className="text-sm text-muted">Gecikmiş takip yok.</p>}
         <ul className="space-y-3">
@@ -84,7 +84,7 @@ export default async function FollowUpsPage() {
         </ul>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Yaklaşan ({upcoming.length})</h2>
         {upcoming.length === 0 && <p className="text-sm text-muted">Yaklaşan takip yok.</p>}
         <ul className="space-y-2 text-sm">

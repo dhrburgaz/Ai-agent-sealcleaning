@@ -59,17 +59,25 @@
     { "requirement": "finance report never divides by zero on a revenue-free month/no decided leads", "status": "done", "test": "tests/unit/finance-report.test.ts" },
     { "requirement": "win rate and profit-floor achievement computed only from real completed jobs/decided leads, never a forecast", "status": "done", "test": "tests/unit/finance-report.test.ts, app/dashboard/finance/page.tsx" },
     { "requirement": "PWA installable (manifest + service worker) without caching stale dynamic dashboard data", "status": "done", "test": "public/manifest.webmanifest, public/sw.js (only caches /icon.svg and /manifest.webmanifest; verified manually — see docs/PWA.md)" },
-    { "requirement": "login brute-force rate limiting locks out after repeated failures and resets on success", "status": "done", "test": "tests/unit/login-rate-limit.test.ts" }
+    { "requirement": "login brute-force rate limiting locks out after repeated failures and resets on success", "status": "done", "test": "tests/unit/login-rate-limit.test.ts" },
+    { "requirement": "Agent Network shows exactly 20 agents, no duplicates, no gaps", "status": "done", "test": "tests/unit/agent-network.test.ts, tests/e2e/smoke.spec.ts (19 orbit nodes + Beyza at the center)" },
+    { "requirement": "Agent Network node state derived from real agent_runs, never fabricated activity", "status": "done", "test": "lib/server/agent-network.ts (deriveState: idle when no run has ever happened), tests/e2e/smoke.spec.ts" },
+    { "requirement": "boot sequence renders and is skippable", "status": "done", "test": "tests/e2e/smoke.spec.ts" },
+    { "requirement": "AI Core is a labeled, state-reactive element (not a bare decorative image)", "status": "done", "test": "components/beyza/core/AICore.tsx (role=img, aria-label reflects live BeyzaCoreState), tests/e2e/smoke.spec.ts" },
+    { "requirement": "reduced-motion disables AI Core animations", "status": "done", "test": "tests/e2e/smoke.spec.ts (reduced motion disables Beyza core animations)" },
+    { "requirement": "call mode connects and answers a typed command through the real conversation engine", "status": "done", "test": "tests/e2e/smoke.spec.ts" },
+    { "requirement": "no console/page errors across the full dashboard flow", "status": "done", "test": "tests/e2e/smoke.spec.ts (collects console errors/pageerrors across the whole run, asserts empty)" },
+    { "requirement": "sound system stays silent until a real user interaction occurs", "status": "done", "test": "lib/beyza-sound.ts (userInteracted gate on pointerdown/keydown)" }
   ],
   "endToEndSmoke": {
     "status": "done",
     "location": "tests/e2e/smoke.spec.ts",
-    "coverage": "setup wizard -> login -> lead creation -> dedupe -> 40m2 estimate -> QA-gated quote -> PDF generation -> Agent 06 photo section renders -> lead-scoped Ask Beyza -> inventory/AI-usage/suppliers pages render -> calendar/follow-ups/finance pages render -> ICS export route returns a real calendar file",
-    "runNote": "Requires a running dev server against a fresh, empty database and the pre-installed Chromium (PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers). Not part of `npm run check`, but now also wired into .github/workflows/ci.yml as a separate CI job."
+    "coverage": "setup wizard -> login -> boot sequence -> lead creation -> dedupe -> 40m2 estimate -> QA-gated quote -> PDF generation -> Agent 06 photo section renders -> lead-scoped Ask Beyza -> inventory/AI-usage/suppliers pages render -> calendar/follow-ups/finance pages render -> ICS export route returns a real calendar file -> Agent Network (20 agents) -> full-screen call mode text command -> Beyza Ayarları -> zero console errors across the whole run; plus a second test verifying prefers-reduced-motion disables the AI Core's CSS animations",
+    "runNote": "Requires a running dev server against a fresh, empty database and the pre-installed Chromium (PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers). Not part of `npm run check`, but now also wired into .github/workflows/ci.yml as a separate CI job. Against `next dev` specifically (not a production server), the first hit to each route pays a compile cost — the relevant assertions use generous timeouts (15s) to absorb that; the CI job runs a production build instead, so it isn't affected."
   },
   "checkPipeline": {
     "command": "npm run check",
-    "covers": ["eslint", "tsc --noEmit", "vitest run (unit+integration, 242 tests / 44 files)", "next build"],
+    "covers": ["eslint", "tsc --noEmit", "vitest run (unit+integration, 243 tests / 45 files)", "next build"],
     "lastKnownStatus": "green"
   },
   "ci": {

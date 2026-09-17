@@ -15,7 +15,7 @@ export default async function JobsPage() {
       <h1 className="text-2xl font-semibold text-ink">İşler</h1>
 
       {wonWithoutJob.length > 0 && (
-        <section className="rounded-xl border border-border bg-surface-raised p-5">
+        <section className="glass-panel rounded-xl p-5">
           <h2 className="mb-3 text-sm font-medium text-ink">Kazanılan, planlanmayı bekleyen</h2>
           <div className="space-y-2">
             {wonWithoutJob.map((lead) => {

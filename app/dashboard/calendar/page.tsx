@@ -47,7 +47,7 @@ export default async function CalendarPage() {
         rezervasyonun üzerine planlanamaz.
       </p>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Randevular</h2>
         {pendingAppointments.length === 0 && <p className="text-sm text-muted">Planlanmış randevu yok.</p>}
         <ul className="space-y-3">
@@ -88,7 +88,7 @@ export default async function CalendarPage() {
         </ul>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Takvim etkinlikleri</h2>
         {upcomingEvents.length === 0 && <p className="text-sm text-muted">Yaklaşan etkinlik yok.</p>}
         <ul className="space-y-2 text-sm">
@@ -103,7 +103,7 @@ export default async function CalendarPage() {
         </ul>
       </section>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Keşif randevusu öner</h2>
         <ProposeAppointmentForm
           leads={qualifiedLeads.map((l) => ({
@@ -113,7 +113,7 @@ export default async function CalendarPage() {
         />
       </section>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">İş planla</h2>
         <ScheduleJobForm
           jobs={unscheduledJobs.map((j) => {
@@ -124,7 +124,7 @@ export default async function CalendarPage() {
         />
       </section>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Manuel etkinlik ekle</h2>
         <AddCalendarEventForm />
       </section>

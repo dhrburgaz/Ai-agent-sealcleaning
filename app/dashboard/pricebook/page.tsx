@@ -17,7 +17,7 @@ export default async function PriceBookPage() {
         </p>
       </div>
 
-      <form action={createPriceBookItemAction} className="grid gap-3 rounded-xl border border-border bg-surface-raised p-5 sm:grid-cols-5">
+      <form action={createPriceBookItemAction} className="grid gap-3 glass-panel rounded-xl p-5 sm:grid-cols-5">
         <input name="category" placeholder="Kategori" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
         <input name="nameNl" placeholder="Ad (NL)" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm sm:col-span-2" />
         <input name="unit" placeholder="Birim (m2, lm, ...)" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />

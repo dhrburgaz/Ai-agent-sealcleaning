@@ -15,7 +15,7 @@ export default async function InventoryPage() {
         </p>
       </div>
 
-      <form action={createInventoryItemAction} className="grid gap-3 rounded-xl border border-border bg-surface-raised p-5 sm:grid-cols-4">
+      <form action={createInventoryItemAction} className="grid gap-3 glass-panel rounded-xl p-5 sm:grid-cols-4">
         <input name="label" placeholder="Malzeme adı" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
         <input name="unit" placeholder="Birim (m2, adet, kg...)" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
         <input name="quantityOnHand" type="number" step="0.01" placeholder="Miktar" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />

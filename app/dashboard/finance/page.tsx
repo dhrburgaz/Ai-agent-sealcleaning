@@ -66,24 +66,24 @@ export default async function FinancePage() {
       </p>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-border bg-surface-raised p-5">
+        <div className="glass-panel rounded-xl p-5">
           <div className="text-xs uppercase tracking-wide text-muted">Boru hattı değeri</div>
           <div className="mt-1 text-xl font-semibold text-ink">{formatEur(pipelineValueEur)}</div>
           <div className="text-xs text-muted">{pendingQuotes.length} bekleyen teklif</div>
         </div>
-        <div className="rounded-xl border border-border bg-surface-raised p-5">
+        <div className="glass-panel rounded-xl p-5">
           <div className="text-xs uppercase tracking-wide text-muted">Kazanma oranı</div>
           <div className="mt-1 text-xl font-semibold text-ink">{winRate.winRatePercent.toFixed(1)}%</div>
           <div className="text-xs text-muted">{winRate.totalDecided} karara bağlanmış lead</div>
         </div>
-        <div className="rounded-xl border border-border bg-surface-raised p-5">
+        <div className="glass-panel rounded-xl p-5">
           <div className="text-xs uppercase tracking-wide text-muted">€1.200 kâr hedefi tutturma</div>
           <div className="mt-1 text-xl font-semibold text-ink">{profitFloorRate.toFixed(1)}%</div>
           <div className="text-xs text-muted">{financials.length} tamamlanmış iş</div>
         </div>
       </div>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">Aylık özet</h2>
         {monthlyBuckets.length === 0 && (
           <p className="text-sm text-muted">Henüz tamamlanmış iş yok; aylık rapor için veri gerekli.</p>

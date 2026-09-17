@@ -4,6 +4,7 @@ import { desc, eq } from 'drizzle-orm';
 import { db } from '@/db/client';
 import {
   leads,
+  customers,
   quotes,
   estimates,
   estimateLines,
@@ -15,6 +16,7 @@ import {
   suppliers,
   supplierProducts,
   supplierPriceObservations,
+  appointments,
 } from '@/db/schema';
 import { parseOwnerCommand, renderStatusBriefing, UNSUPPORTED_COMMAND_REPLY } from '@/lib/agents/beyza-orchestrator';
 import { buildStatusSnapshot } from '@/lib/server/status-snapshot';
@@ -26,6 +28,11 @@ import { generateQuoteForEstimate } from './leads/[id]/actions';
 
 export interface AskBeyzaState {
   answer?: string;
+  /** Section 17 (AI-controlled UI): when set, the client navigates here
+   *  after showing the answer — e.g. opening the lead Beyza just described.
+   *  Never used for a high-impact/destructive action; those still require
+   *  the owner to act from the opened page (approval rules unchanged). */
+  navigateTo?: string;
 }
 
 const NEEDS_LEAD_CONTEXT_REPLY =
@@ -117,10 +124,59 @@ export async function askBeyzaAction(
           'Kâr hedefi kontrolü teklif bazında yapılır — bir teklifi açıp "Neden?" görünümünden kontrol edebilirsiniz.',
       };
 
-    case 'tomorrow_availability':
+    case 'tomorrow_availability': {
+      const now = new Date();
+      const tomorrowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      const tomorrowEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
+      const tomorrowAppointments = (await db.select().from(appointments))
+        .filter(
+          (a) => a.status !== 'cancelled' && a.startsAt >= tomorrowStart && a.startsAt < tomorrowEnd,
+        )
+        .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+      if (tomorrowAppointments.length === 0) {
+        return { answer: 'Yarın için planlanmış randevu yok — boşsunuz.', navigateTo: '/dashboard/calendar' };
+      }
+      const list = tomorrowAppointments
+        .map((a) => `${new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit' }).format(a.startsAt)} — ${a.kind === 'site_visit' ? 'keşif' : 'iş'}`)
+        .join(', ');
+      return { answer: `Yarın ${tomorrowAppointments.length} randevunuz var: ${list}.`, navigateTo: '/dashboard/calendar' };
+    }
+
+    case 'open_hottest_lead': {
+      const hottest = (await db.select().from(leads))
+        .filter((l) => l.priority === 'hot')
+        .sort((a, b) => (b.priorityScore ?? 0) - (a.priorityScore ?? 0))[0];
+      if (!hottest) return { answer: 'Şu anda sıcak bir lead yok.' };
+      const customer = hottest.customerId
+        ? (await db.select().from(customers).where(eq(customers.id, hottest.customerId)).limit(1))[0]
+        : null;
       return {
-        answer: 'Takvim entegrasyonu henüz eklenmedi (Faz 7). Bu komut şu an güvenilir şekilde cevaplanamıyor.',
+        answer: `En yüksek öncelikli lead: ${customer?.name ?? 'bilinmeyen müşteri'} — ${hottest.serviceCategory ?? 'genel talep'} (${hottest.location ?? 'konum belirtilmemiş'}). Açılıyor.`,
+        navigateTo: `/dashboard/leads/${hottest.id}`,
       };
+    }
+
+    case 'open_quote_for_customer': {
+      const matchingCustomers = (await db.select().from(customers)).filter((c) =>
+        c.name.toLowerCase().includes(parsed.name.toLowerCase()),
+      );
+      if (matchingCustomers.length === 0) {
+        return { answer: `"${parsed.name}" adında kayıtlı bir müşteri bulamadım.` };
+      }
+      const customerIds = new Set(matchingCustomers.map((c) => c.id));
+      const matchingLeads = (await db.select().from(leads)).filter((l) => l.customerId && customerIds.has(l.customerId));
+      const leadIds = new Set(matchingLeads.map((l) => l.id));
+      const matchingQuotes = (await db.select().from(quotes))
+        .filter((q) => leadIds.has(q.leadId))
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      if (matchingQuotes.length === 0) {
+        return { answer: `${matchingCustomers[0]!.name} için hazırlanmış bir teklif bulamadım.` };
+      }
+      return {
+        answer: `${matchingCustomers[0]!.name} için ${matchingQuotes[0]!.quoteNumber} numaralı teklif açılıyor.`,
+        navigateTo: `/dashboard/leads/${matchingQuotes[0]!.leadId}`,
+      };
+    }
 
     case 'hypothetical_price': {
       if (!leadId) return { answer: NEEDS_LEAD_CONTEXT_REPLY };

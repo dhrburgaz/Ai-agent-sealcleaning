@@ -22,7 +22,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         {customer?.name} · {quote.languageLevel} · Durum: <strong>{quote.status}</strong>
       </p>
 
-      <div className="rounded-xl border border-border bg-surface-raised p-5 text-sm">
+      <div className="glass-panel rounded-xl p-5 text-sm">
         <div>Toplam (excl. BTW): €{quote.totalExVat.toFixed(2)}</div>
         <div>BTW: €{quote.vatAmount.toFixed(2)}</div>
         <div className="text-lg font-semibold text-ink">Toplam (incl. BTW): €{quote.totalIncVat.toFixed(2)}</div>
@@ -62,7 +62,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
       </div>
 
       {versions.length > 0 && (
-        <div className="rounded-xl border border-border bg-surface-raised p-5 text-sm">
+        <div className="glass-panel rounded-xl p-5 text-sm">
           <h2 className="mb-2 font-medium text-ink">Versiyon geçmişi</h2>
           <ul className="space-y-1 text-muted">
             {versions.map((v) => (

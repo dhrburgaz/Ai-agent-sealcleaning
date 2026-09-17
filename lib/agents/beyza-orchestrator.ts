@@ -94,6 +94,8 @@ export type OwnerCommandIntent =
   | { intent: 'price_freshness_check' }
   | { intent: 'generate_quote_pdf' }
   | { intent: 'profit_floor_check' }
+  | { intent: 'open_hottest_lead' }
+  | { intent: 'open_quote_for_customer'; name: string }
   | { intent: 'unsupported'; raw: string };
 
 const CITY_PATTERN = /\b([A-ZÇĞİÖŞÜ][\wçğıöşü]+)\s+içinde/i;
@@ -117,6 +119,11 @@ export function parseOwnerCommand(raw: string): OwnerCommandIntent {
   if (/durum(lar)?\s*ne/.test(text)) return { intent: 'status_briefing' };
   if (/bugün kaç lead/.test(text)) return { intent: 'leads_today_count' };
 
+  if (/en sıcak (lead'?i|müşteriyi|leadi) aç/.test(text)) return { intent: 'open_hottest_lead' };
+
+  const quoteForCustomerMatch = text.match(/(\w+)'?(?:ye|ya|e|a) hazırladığımız teklifi (?:aç|göster)/);
+  if (quoteForCustomerMatch) return { intent: 'open_quote_for_customer', name: quoteForCustomerMatch[1] ?? '' };
+
   const hotMatch = text.match(/en (?:iyi|sıcak) (\w+)/);
   if (hotMatch) {
     const numberWords: Record<string, number> = { bir: 1, iki: 2, üç: 3, dört: 4, beş: 5 };
@@ -135,7 +142,7 @@ export function parseOwnerCommand(raw: string): OwnerCommandIntent {
   if (/bu hafta ne kazandık|realized profit|bu hafta.*kar/.test(text)) {
     return { intent: 'weekly_profit' };
   }
-  if (/yarın.*boş muyuz|yarın.*keşif/.test(text)) return { intent: 'tomorrow_availability' };
+  if (/yarın.*(boş muyuz|keşif|randevu|takvim)/.test(text)) return { intent: 'tomorrow_availability' };
 
   const euroMatch = text.match(EURO_AMOUNT_PATTERN);
   if (euroMatch && /verirsem|verirsek|ne kalır/.test(text)) {

@@ -70,7 +70,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         <DictationParser />
       </section>
 
-      <section className="rounded-xl border border-border bg-surface-raised p-5">
+      <section className="glass-panel rounded-xl p-5">
         <h2 className="mb-3 text-sm font-medium text-ink">Maliyet ekle</h2>
         <form action={saveActualCostsAction} className="grid gap-3 sm:grid-cols-4">
           <input type="hidden" name="jobId" value={job.id} />
@@ -98,7 +98,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
       </section>
 
       {comparison && (
-        <section className="rounded-xl border border-border bg-surface-raised p-5 text-sm">
+        <section className="glass-panel rounded-xl p-5 text-sm">
           <h2 className="mb-3 font-medium text-ink">Tahmin vs. gerçek</h2>
           <div>Tahmini maliyet: €{comparison.estimatedTotalCost.toFixed(2)}</div>
           <div>Gerçek maliyet: €{comparison.actualTotalCost.toFixed(2)} ({(comparison.costVariancePercent * 100).toFixed(1)}% sapma)</div>

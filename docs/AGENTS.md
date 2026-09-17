@@ -132,6 +132,20 @@ what input produced it.
   from completed jobs, sent quotes, and decided leads — never a forecast
   presented as an actual. Rendered on `app/dashboard/finance/`.
 
+## Agent Network visualization (UX redesign)
+
+`app/dashboard/agents/` renders all 20 agents as an orbit around a central
+BEYZA (Agent 01) — grouped into İstihbarat/Ticari/Operasyon/İletişim/Kontrol
+(`lib/agents/agent-groups.ts`), never a flat grid of cards. Each node's
+visual state (idle/working/waiting/blocked/error) is derived from that
+agent's most recent real `agent_runs` row (`lib/server/agent-network.ts`) —
+an agent that has never run shows idle, not a fabricated "busy" state.
+Clicking a node opens a detail panel with its purpose, last run's trigger,
+output summary, confidence, provider/cache-hit/cost, and build-status note.
+The Command Center's "Canlı Akış" panel (`lib/server/activity-feed.ts`)
+renders the same `agent_runs` data as a chronological feed with a short,
+per-agent-key description — also real, also empty-when-nothing-happened.
+
 ## Cost/audit discipline per agent
 
 Every agent, deterministic or not, is expected to have (per section 9):
