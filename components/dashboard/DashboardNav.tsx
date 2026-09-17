@@ -8,8 +8,10 @@ const NAV_ITEMS = [
   { href: '/dashboard/jobs', label: 'İşler' },
   { href: '/dashboard/pricebook', label: 'Fiyat Listesi' },
   { href: '/dashboard/suppliers', label: 'Tedarikçiler' },
+  { href: '/dashboard/inventory', label: 'Envanter' },
   { href: '/dashboard/settings', label: 'Ayarlar' },
   { href: '/dashboard/settings/theme', label: 'Tema' },
+  { href: '/dashboard/settings/ai-usage', label: 'AI Kullanımı' },
 ];
 
 export function DashboardNav({ displayName }: { displayName: string }) {

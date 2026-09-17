@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { db } from '@/db/client';
 import {
   leads,
@@ -15,6 +16,14 @@ import {
   quotes,
   quoteVersions,
   auditLogs,
+  scopes,
+  scopeItems,
+  measurements,
+  assumptions,
+  riskFlags,
+  attachments,
+  photoAnalyses,
+  inventoryItems,
 } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '@/lib/auth/guard';
@@ -24,12 +33,20 @@ import { decideSend, type ApprovalMode } from '@/lib/messaging/approval';
 import {
   buildCeramicTerraceScope,
   computeCeramicTerraceJob,
+  applyInventoryOffset,
   type CeramicTerraceInputs,
 } from '@/lib/pricing/ceramic-terrace-template';
 import { runQaGate } from '@/lib/pricing/qa-gate';
 import { computeQuoteConfidence, customerFacingLanguageLevel } from '@/lib/pricing/confidence';
 import { categoryLabelNl } from '@/lib/pricing/category-labels';
 import { generateQuotePdf } from '@/lib/documents/quote-pdf';
+import { buildMethodPlan } from '@/lib/pricing/method-planner';
+import { validateUpload, sanitizeOriginalFilename } from '@/lib/storage/upload-validation';
+import { findExistingAnalysisByHash } from '@/lib/pricing/image-dedupe';
+import { buildManualReviewSkeleton, sanitizeMeasurementClaims, computePhotoConfidence } from '@/lib/agents/vision-inspector';
+import { eventBus, ensureHandlersRegistered, recordAgentRun } from '@/lib/orchestration';
+
+ensureHandlersRegistered();
 
 const MATERIAL_LABELS_NL: Record<string, string> = {
   ceramic_tiles: 'Keramische tegels',
@@ -96,6 +113,40 @@ export async function sendMessageAction(formData: FormData): Promise<void> {
   revalidatePath(`/dashboard/leads/${leadId}`);
 }
 
+/**
+ * Manual inbound-message logging (no live channel connector exists yet, see
+ * docs/FACEBOOK_CONNECTOR.md) — the owner pastes what the customer replied.
+ * This is what feeds the message.received event (section 47).
+ */
+export async function logInboundMessageAction(formData: FormData): Promise<void> {
+  const auth = await requireAuth();
+  if (!auth.authenticated) throw new Error('Unauthorized');
+
+  const leadId = String(formData.get('leadId') ?? '');
+  const body = String(formData.get('body') ?? '').trim();
+  if (!body) throw new Error('Mesaj metni boş olamaz.');
+
+  const [lead] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+  if (!lead) throw new Error('Lead not found');
+
+  const thread = await getOrCreateThread(leadId, lead.customerId);
+  const [message] = await db
+    .insert(messages)
+    .values({ threadId: thread.id, direction: 'inbound', body, language: 'nl', status: 'sent', sentAt: new Date() })
+    .returning();
+
+  await db.insert(auditLogs).values({
+    actor: auth.displayName ?? 'owner',
+    action: 'inbound_message_logged',
+    entityType: 'message',
+    entityId: message!.id,
+  });
+
+  await eventBus.emit('message.received', { leadId, threadId: thread.id, messageId: message!.id });
+
+  revalidatePath(`/dashboard/leads/${leadId}`);
+}
+
 export interface CeramicEstimateFormInput {
   leadId: string;
   areaM2: number;
@@ -153,33 +204,139 @@ export async function createCeramicEstimateAction(formData: FormData): Promise<v
   };
   const breakdown = computeCeramicTerraceJob(input, policy);
 
+  // Agent 10/33: check inventory before recommending a purchase.
+  const existingInventory = await db.select().from(inventoryItems);
+  const tileInventoryItem = existingInventory.find((i) => i.label === MATERIAL_LABELS_NL.ceramic_tiles);
+  const sandInventoryItem = existingInventory.find((i) => i.label === MATERIAL_LABELS_NL.sand_subbase);
+  const { tileOffset, sandOffset, inventorySavingsEur, adjustedCosts, pricing } = applyInventoryOffset(
+    input,
+    breakdown,
+    { ceramicTilesOnHand: tileInventoryItem?.quantityOnHand ?? 0, sandSubbaseOnHand: sandInventoryItem?.quantityOnHand ?? 0 },
+    policy,
+  );
+
   const confidence = computeQuoteConfidence(scopeResult.factStatuses, {
     unclearAccess: !accessWidthCm,
+  });
+
+  // Agent 07 persists a real scope record (previously computed only in-memory)
+  // so Agent 08's method plan and the QA gate have durable scope/assumption/
+  // risk rows to work from, per section 24's shared database model.
+  const [scope] = await db
+    .insert(scopes)
+    .values({ leadId, templateKey: 'ceramic_terrace_40m2', materialSourcing: tileSuppliedBy, status: 'active' })
+    .returning();
+
+  const offsetByMaterialLabel: Record<string, { quantityFromInventory: number; quantityToBuy: number }> = {
+    ceramic_tiles: tileOffset,
+    sand_subbase: sandOffset,
+  };
+  await db.insert(scopeItems).values(
+    breakdown.materials.map((m) => {
+      const offset = offsetByMaterialLabel[m.label];
+      return {
+        scopeId: scope!.id,
+        key: m.label,
+        label: MATERIAL_LABELS_NL[m.label] ?? m.label,
+        quantity: m.finalQuantity,
+        unit: m.unit,
+        status: 'known' as const,
+        customerSupplied: m.suppliedBy === 'customer',
+        notes:
+          offset && offset.quantityFromInventory > 0
+            ? `Envanterden karşılanan: ${offset.quantityFromInventory} ${m.unit}. Satın alınacak: ${offset.quantityToBuy} ${m.unit}.`
+            : null,
+      };
+    }),
+  );
+  if (inventorySavingsEur > 0) {
+    await recordAgentRun({
+      agentKey: 'agent10_supplier_scout',
+      triggeredBy: auth.displayName ?? 'owner',
+      entityType: 'scope',
+      entityId: scope!.id,
+      outputSummary: { inventorySavingsEur, tileOffset, sandOffset },
+    });
+  }
+  await db.insert(measurements).values({
+    scopeId: scope!.id,
+    kind: 'm2',
+    value: areaM2,
+    status: 'known',
+  });
+
+  const methodPlan = buildMethodPlan({
+    hasExistingSurfaceToRemove: true,
+    currentSurfaceKnown: input.currentPavingKnown,
+    excavationNeeded: input.excavationNeeded,
+    excavationDepthKnown: input.excavationDepthCm !== null,
+    drainageKnown: input.drainageKnown,
+    soilOrSubbaseKnown: input.currentPavingKnown,
+    levelDifferencesKnown: input.levelDifferencesKnown,
+    accessWidthCm: input.accessWidthCm,
+    disposalIncluded: input.disposalIncluded,
+    edging: input.edging,
+    cuttingComplexity: 'low',
+    retainingWallInvolved: false,
+    suspectedUtilitiesNearby: false,
+    suspectedAsbestos: false,
+    permitLikelyRequired: 'unknown',
+  });
+
+  if (methodPlan.verificationNeeded.length > 0) {
+    await db.insert(assumptions).values(
+      methodPlan.verificationNeeded.map((description) => ({
+        scopeId: scope!.id,
+        description,
+        impactsPrice: true,
+        mustVerifyOnSite: true,
+      })),
+    );
+  }
+  if (methodPlan.risks.length > 0) {
+    await db.insert(riskFlags).values(
+      methodPlan.risks.map((description) => ({
+        scopeId: scope!.id,
+        kind: 'general',
+        severity: 'medium' as const,
+        description,
+        blocksBindingQuote: false,
+      })),
+    );
+  }
+
+  await recordAgentRun({
+    agentKey: 'agent08_method_planner',
+    triggeredBy: auth.displayName ?? 'owner',
+    entityType: 'scope',
+    entityId: scope!.id,
+    outputSummary: { stepCount: methodPlan.steps.length, overallCertainty: methodPlan.overallCertainty },
   });
 
   const [estimate] = await db
     .insert(estimates)
     .values({
       leadId,
+      scopeId: scope!.id,
       status: 'ready',
-      directCost: breakdown.pricing.directCost,
-      costWithOverhead: breakdown.pricing.costWithOverhead,
-      priceForMargin: breakdown.pricing.priceForMargin,
-      priceForProfitFloor: breakdown.pricing.priceForProfitFloor,
-      minimumJobCharge: breakdown.pricing.minimumJobCharge,
-      recommendedExVat: breakdown.pricing.recommendedExVat,
+      directCost: pricing.directCost,
+      costWithOverhead: pricing.costWithOverhead,
+      priceForMargin: pricing.priceForMargin,
+      priceForProfitFloor: pricing.priceForProfitFloor,
+      minimumJobCharge: pricing.minimumJobCharge,
+      recommendedExVat: pricing.recommendedExVat,
       vatRatePercent: company.vatRatePercent,
       targetMarginRate: company.defaultTargetMarginRate,
       minimumTargetGrossProfit: company.defaultMinimumTargetGrossProfit,
-      breakEven: breakdown.pricing.breakEven,
-      grossProfit: breakdown.pricing.grossProfit,
-      grossMargin: breakdown.pricing.grossMargin,
-      profitPerLabourHour: breakdown.pricing.profitPerLabourHour,
-      lowEstimate: breakdown.pricing.lowEstimate,
-      expectedEstimate: breakdown.pricing.expectedEstimate,
-      highEstimate: breakdown.pricing.highEstimate,
+      breakEven: pricing.breakEven,
+      grossProfit: pricing.grossProfit,
+      grossMargin: pricing.grossMargin,
+      profitPerLabourHour: pricing.profitPerLabourHour,
+      lowEstimate: pricing.lowEstimate,
+      expectedEstimate: pricing.expectedEstimate,
+      highEstimate: pricing.highEstimate,
       quoteConfidence: confidence,
-      commercialFit: breakdown.pricing.commercialFit,
+      commercialFit: pricing.commercialFit,
       qaBlocked: false,
       qaBlockReasons: [],
     })
@@ -197,7 +354,7 @@ export async function createCeramicEstimateAction(formData: FormData): Promise<v
     });
   }
   await db.insert(estimateLines).values([
-    { estimateId: estimate!.id, category: 'materials', label: 'Malzeme (toplam)', totalCost: breakdown.costs.materials, source: 'calculated' },
+    { estimateId: estimate!.id, category: 'materials', label: 'Malzeme (toplam)', totalCost: adjustedCosts.materials, source: 'calculated' },
     { estimateId: estimate!.id, category: 'labour', label: 'İşçilik', totalCost: breakdown.costs.labour, source: 'calculated' },
     { estimateId: estimate!.id, category: 'waste', label: 'Atık/Bertaraf', totalCost: breakdown.costs.waste, source: 'calculated' },
     { estimateId: estimate!.id, category: 'consumables', label: 'Sarf malzeme', totalCost: breakdown.costs.consumables, source: 'calculated' },
@@ -212,19 +369,53 @@ export async function createCeramicEstimateAction(formData: FormData): Promise<v
     action: 'estimate_created',
     entityType: 'estimate',
     entityId: estimate!.id,
-    after: { recommendedExVat: breakdown.pricing.recommendedExVat, commercialFit: breakdown.pricing.commercialFit },
+    after: { recommendedExVat: pricing.recommendedExVat, commercialFit: pricing.commercialFit },
   });
+
+  await recordAgentRun({
+    agentKey: 'agent07_scope_builder',
+    triggeredBy: auth.displayName ?? 'owner',
+    entityType: 'estimate',
+    entityId: estimate!.id,
+    outputSummary: { missingInfo: scopeResult.missingInfo, factStatuses: scopeResult.factStatuses },
+    confidence,
+  });
+  await recordAgentRun({
+    agentKey: 'agent09_pricing',
+    triggeredBy: auth.displayName ?? 'owner',
+    entityType: 'estimate',
+    entityId: estimate!.id,
+    outputSummary: {
+      recommendedExVat: pricing.recommendedExVat,
+      commercialFit: pricing.commercialFit,
+    },
+    confidence,
+  });
+
+  // scope.changed -> Agent 20 (QA) re-checks immediately, per section 47.
+  await eventBus.emit('scope.changed', { leadId, estimateId: estimate!.id });
 
   revalidatePath(`/dashboard/leads/${leadId}`);
 }
 
-export async function createQuoteFromEstimateAction(formData: FormData): Promise<void> {
-  const auth = await requireAuth();
-  if (!auth.authenticated) throw new Error('Unauthorized');
+export interface GenerateQuoteResult {
+  blocked: boolean;
+  reasons: string[];
+  quoteNumber?: string;
+}
 
-  const leadId = String(formData.get('leadId') ?? '');
-  const estimateId = String(formData.get('estimateId') ?? '');
-
+/**
+ * Shared core for creating a quote from a ready estimate — used by both the
+ * "Teklif oluştur (PDF)" form action and Beyza's "Bunun PDF teklifini
+ * hazırla" voice/text command (lib/agents/beyza-orchestrator.ts,
+ * generate_quote_pdf intent), so there is exactly one QA-gated code path
+ * that ever produces a quote PDF.
+ */
+export async function generateQuoteForEstimate(
+  leadId: string,
+  estimateId: string,
+  actorDisplayName: string,
+): Promise<GenerateQuoteResult> {
   const [estimate] = await db.select().from(estimates).where(eq(estimates.id, estimateId)).limit(1);
   const [lead] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
   if (!estimate || !lead) throw new Error('Not found');
@@ -282,7 +473,7 @@ export async function createQuoteFromEstimateAction(formData: FormData): Promise
   if (qa.blocked) {
     await db.update(estimates).set({ qaBlocked: true, qaBlockReasons: qa.reasons }).where(eq(estimates.id, estimateId));
     revalidatePath(`/dashboard/leads/${leadId}`);
-    return;
+    return { blocked: true, reasons: qa.reasons };
   }
 
   const vatAmount = (estimate.recommendedExVat ?? 0) * (estimate.vatRatePercent / 100);
@@ -361,7 +552,7 @@ export async function createQuoteFromEstimateAction(formData: FormData): Promise
   await db.update(leads).set({ state: 'QUOTE_DRAFTED', updatedAt: new Date() }).where(eq(leads.id, leadId));
 
   await db.insert(auditLogs).values({
-    actor: auth.displayName ?? 'owner',
+    actor: actorDisplayName,
     action: 'quote_created',
     entityType: 'quote',
     entityId: quote!.id,
@@ -370,4 +561,151 @@ export async function createQuoteFromEstimateAction(formData: FormData): Promise
 
   revalidatePath(`/dashboard/leads/${leadId}`);
   revalidatePath('/dashboard/quotes');
+  return { blocked: false, reasons: [], quoteNumber };
+}
+
+export async function createQuoteFromEstimateAction(formData: FormData): Promise<void> {
+  const auth = await requireAuth();
+  if (!auth.authenticated) throw new Error('Unauthorized');
+
+  const leadId = String(formData.get('leadId') ?? '');
+  const estimateId = String(formData.get('estimateId') ?? '');
+
+  await generateQuoteForEstimate(leadId, estimateId, auth.displayName ?? 'owner');
+}
+
+const MAX_PHOTO_BYTES = Number(process.env.MAX_UPLOAD_MB ?? 15) * 1024 * 1024;
+
+/**
+ * Agent 06 — photo upload. Validates (section 37), hashes (section 6/50),
+ * and either reuses a prior analysis for an identical file or creates an
+ * honest, empty-until-reviewed skeleton. Never fabricates an observation.
+ */
+export async function uploadPhotoAction(formData: FormData): Promise<void> {
+  const auth = await requireAuth();
+  if (!auth.authenticated) throw new Error('Unauthorized');
+
+  const leadId = String(formData.get('leadId') ?? '');
+  const file = formData.get('photo');
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error('Bir fotoğraf seçilmedi.');
+  }
+
+  const validation = validateUpload({
+    originalFilename: file.name,
+    mimeType: file.type,
+    sizeBytes: file.size,
+    maxSizeBytes: MAX_PHOTO_BYTES,
+  });
+  if (!validation.valid) {
+    throw new Error(validation.reasons.join(' '));
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const sha256 = crypto.createHash('sha256').update(buffer).digest('hex');
+
+  const storageDir = process.env.STORAGE_DIR ?? './storage';
+  const uploadsDir = path.join(storageDir, 'uploads');
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  fs.writeFileSync(path.join(uploadsDir, validation.safeStoredFilename!), buffer);
+
+  const [attachment] = await db
+    .insert(attachments)
+    .values({
+      leadId,
+      kind: 'photo',
+      originalFilename: sanitizeOriginalFilename(file.name),
+      storedFilename: validation.safeStoredFilename!,
+      mimeType: file.type,
+      sizeBytes: file.size,
+      sha256,
+    })
+    .returning();
+
+  const priorAttachments = (await db.select().from(attachments).where(eq(attachments.leadId, leadId))).filter(
+    (a) => a.id !== attachment!.id,
+  );
+  const { alreadyAnalyzed } = findExistingAnalysisByHash(
+    priorAttachments.map((a) => a.sha256),
+    sha256,
+  );
+
+  if (alreadyAnalyzed) {
+    const duplicateOf = priorAttachments.find((a) => a.sha256 === sha256);
+    const [priorAnalysis] = duplicateOf
+      ? await db.select().from(photoAnalyses).where(eq(photoAnalyses.attachmentId, duplicateOf.id)).limit(1)
+      : [];
+    await db.insert(photoAnalyses).values({
+      attachmentId: attachment!.id,
+      imageHash: sha256,
+      observations: priorAnalysis?.observations ?? [],
+      possibleScopeItems: priorAnalysis?.possibleScopeItems ?? [],
+      hazardsOrRisks: priorAnalysis?.hazardsOrRisks ?? [],
+      accessObservations: priorAnalysis?.accessObservations ?? [],
+      measurementClaims: priorAnalysis?.measurementClaims ?? null,
+      questionsToAsk: priorAnalysis?.questionsToAsk ?? [],
+      overallConfidence: priorAnalysis?.overallConfidence ?? 0,
+      ownerCorrection: 'Aynı fotoğraf daha önce yüklenmiş; analiz sonucu yeniden kullanıldı (tekrar analiz yapılmadı).',
+    });
+  } else {
+    const skeleton = buildManualReviewSkeleton();
+    await db.insert(photoAnalyses).values({ attachmentId: attachment!.id, imageHash: sha256, ...skeleton });
+  }
+
+  await eventBus.emit('photo.added', { leadId, attachmentId: attachment!.id, imageHash: sha256 });
+
+  revalidatePath(`/dashboard/leads/${leadId}`);
+}
+
+export async function updatePhotoAnalysisAction(formData: FormData): Promise<void> {
+  const auth = await requireAuth();
+  if (!auth.authenticated) throw new Error('Unauthorized');
+
+  const leadId = String(formData.get('leadId') ?? '');
+  const analysisId = String(formData.get('analysisId') ?? '');
+  const splitLines = (raw: FormDataEntryValue | null) =>
+    String(raw ?? '')
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+  const observations = splitLines(formData.get('observations'));
+  const hazardsOrRisks = splitLines(formData.get('hazardsOrRisks'));
+  const accessObservations = splitLines(formData.get('accessObservations'));
+  const hasScaleReference = formData.get('hasScaleReference') === 'on';
+  const measurementNote = String(formData.get('measurementNote') ?? '').trim();
+
+  const measurementClaims = sanitizeMeasurementClaims(
+    measurementNote ? { note: measurementNote } : null,
+    hasScaleReference,
+  );
+  const confidence = computePhotoConfidence({
+    ownerAnnotated: true,
+    observationCount: observations.length,
+    hasScaleReference,
+  });
+
+  await db
+    .update(photoAnalyses)
+    .set({
+      observations,
+      hazardsOrRisks,
+      accessObservations,
+      measurementClaims,
+      overallConfidence: confidence,
+      updatedAt: new Date(),
+    })
+    .where(eq(photoAnalyses.id, analysisId));
+
+  await recordAgentRun({
+    agentKey: 'agent06_photo_vision',
+    triggeredBy: auth.displayName ?? 'owner',
+    entityType: 'photo_analysis',
+    entityId: analysisId,
+    outputSummary: { observationCount: observations.length, hasScaleReference },
+    confidence,
+    provider: 'owner_manual', // honest: no AI provider is configured/used for this
+  });
+
+  revalidatePath(`/dashboard/leads/${leadId}`);
 }

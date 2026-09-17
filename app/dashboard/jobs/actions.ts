@@ -7,6 +7,9 @@ import { jobs, leads, quotes, actualCosts, auditLogs } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '@/lib/auth/guard';
 import { parseActualsDictation, type ActualCostCategory } from '@/lib/jobs/actuals-dictation-parser';
+import { eventBus, ensureHandlersRegistered } from '@/lib/orchestration';
+
+ensureHandlersRegistered();
 
 export async function createJobFromLeadAction(formData: FormData): Promise<void> {
   const auth = await requireAuth();
@@ -49,6 +52,7 @@ export async function markJobStatusAction(formData: FormData): Promise<void> {
 
   if (status === 'completed') {
     await db.update(leads).set({ state: 'COMPLETED', updatedAt: new Date() }).where(eq(leads.id, job.leadId));
+    await eventBus.emit('job.completed', { leadId: job.leadId, jobId });
   } else if (status === 'in_progress') {
     await db.update(leads).set({ state: 'IN_PROGRESS', updatedAt: new Date() }).where(eq(leads.id, job.leadId));
   }

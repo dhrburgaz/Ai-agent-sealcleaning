@@ -6,6 +6,9 @@ import { quotes, leads, leadEvents, auditLogs } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '@/lib/auth/guard';
 import { canTransition } from '@/lib/crm/state-machine';
+import { eventBus, ensureHandlersRegistered } from '@/lib/orchestration';
+
+ensureHandlersRegistered();
 
 export async function approveQuoteAction(formData: FormData): Promise<void> {
   const auth = await requireAuth();
@@ -23,6 +26,11 @@ export async function approveQuoteAction(formData: FormData): Promise<void> {
     entityType: 'quote',
     entityId: id,
   });
+
+  const [quote] = await db.select().from(quotes).where(eq(quotes.id, id)).limit(1);
+  if (quote) {
+    await eventBus.emit('quote.approved', { leadId: quote.leadId, quoteId: id });
+  }
 
   revalidatePath('/dashboard/quotes');
 }

@@ -1,12 +1,33 @@
 import { notFound } from 'next/navigation';
 import { db } from '@/db/client';
-import { leads, customers, messageThreads, messages, estimates, quotes, leadEvents } from '@/db/schema';
+import {
+  leads,
+  customers,
+  messageThreads,
+  messages,
+  estimates,
+  quotes,
+  leadEvents,
+  assumptions,
+  riskFlags,
+  attachments,
+  photoAnalyses,
+  scopeItems,
+} from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { LEAD_STATES } from '@/lib/crm/state-machine';
 import { canTransition } from '@/lib/crm/state-machine';
 import { availableTemplateKeys } from '@/lib/messaging/templates';
 import { transitionLeadStateAction } from '../actions';
-import { sendMessageAction, createCeramicEstimateAction, createQuoteFromEstimateAction } from './actions';
+import { AskBeyza } from '@/components/dashboard/AskBeyza';
+import {
+  sendMessageAction,
+  createCeramicEstimateAction,
+  createQuoteFromEstimateAction,
+  logInboundMessageAction,
+  uploadPhotoAction,
+  updatePhotoAnalysisAction,
+} from './actions';
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,6 +45,18 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const latestEstimate = leadEstimates[0];
   const leadQuotes = await db.select().from(quotes).where(eq(quotes.leadId, id));
   const events = await db.select().from(leadEvents).where(eq(leadEvents.leadId, id)).orderBy(desc(leadEvents.createdAt));
+  const scopeAssumptions = latestEstimate?.scopeId
+    ? await db.select().from(assumptions).where(eq(assumptions.scopeId, latestEstimate.scopeId))
+    : [];
+  const scopeRisks = latestEstimate?.scopeId
+    ? await db.select().from(riskFlags).where(eq(riskFlags.scopeId, latestEstimate.scopeId))
+    : [];
+  const scopeMaterialItems = latestEstimate?.scopeId
+    ? (await db.select().from(scopeItems).where(eq(scopeItems.scopeId, latestEstimate.scopeId))).filter((s) => s.notes)
+    : [];
+  const leadAttachments = await db.select().from(attachments).where(eq(attachments.leadId, id)).orderBy(desc(attachments.createdAt));
+  const leadPhotoAnalyses = await db.select().from(photoAnalyses);
+  const analysisByAttachmentId = new Map(leadPhotoAnalyses.map((a) => [a.attachmentId, a]));
 
   const validNextStates = LEAD_STATES.filter((s) => canTransition(lead.state, s).allowed);
 
@@ -40,6 +73,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-accent">{lead.priority}</span>
         )}
       </div>
+
+      <AskBeyza leadId={lead.id} />
 
       {lead.priorityReasons && lead.priorityReasons.length > 0 && (
         <div className="rounded-xl border border-border bg-surface-raised p-4 text-sm text-muted">
@@ -94,6 +129,103 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             Taslak oluştur / Gönder
           </button>
         </form>
+        <form action={logInboundMessageAction} className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+          <input type="hidden" name="leadId" value={lead.id} />
+          <input
+            name="body"
+            placeholder="Müşteriden gelen cevabı buraya yapıştırın…"
+            className="min-w-[16rem] flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+            required
+          />
+          <button type="submit" className="rounded-lg border border-border px-4 py-2 text-sm text-ink hover:border-accent">
+            Gelen mesajı kaydet
+          </button>
+        </form>
+      </section>
+
+      <section className="rounded-xl border border-border bg-surface-raised p-5">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gold">
+          Fotoğraflar (Agent 06)
+        </h2>
+        <form action={uploadPhotoAction} className="mb-4 flex flex-wrap items-center gap-2" encType="multipart/form-data">
+          <input type="hidden" name="leadId" value={lead.id} />
+          <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/heic" required className="text-sm text-ink" />
+          <button type="submit" className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90">
+            Fotoğraf yükle
+          </button>
+        </form>
+        <div className="space-y-4">
+          {leadAttachments.map((att) => {
+            const analysis = analysisByAttachmentId.get(att.id);
+            return (
+              <div key={att.id} className="rounded-lg border border-border bg-surface p-4 text-sm">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-ink">{att.originalFilename}</span>
+                  <span className="text-xs text-muted">
+                    Güven: {((analysis?.overallConfidence ?? 0) * 100).toFixed(0)}%
+                  </span>
+                </div>
+                {analysis?.ownerCorrection && (
+                  <p className="mb-2 text-xs text-gold">{analysis.ownerCorrection}</p>
+                )}
+                {analysis && (analysis.observations ?? []).length === 0 ? (
+                  <>
+                    <p className="mb-2 text-xs text-muted">
+                      Henüz analiz edilmedi. Aşağıya gözlemlerinizi girin (her satır bir gözlem):
+                    </p>
+                    <form action={updatePhotoAnalysisAction} className="grid gap-2">
+                      <input type="hidden" name="leadId" value={lead.id} />
+                      <input type="hidden" name="analysisId" value={analysis.id} />
+                      <textarea
+                        name="observations"
+                        placeholder="Gözlemler (bir satır = bir gözlem)"
+                        className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs"
+                      />
+                      <textarea
+                        name="hazardsOrRisks"
+                        placeholder="Tehlike/risk gözlemleri"
+                        className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs"
+                      />
+                      <textarea
+                        name="accessObservations"
+                        placeholder="Erişim gözlemleri"
+                        className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs"
+                      />
+                      <label className="flex items-center gap-2 text-xs text-muted">
+                        <input type="checkbox" name="hasScaleReference" /> Fotoğrafta güvenilir bir ölçek referansı var
+                        (bilinen boyutlu bir nesne, mezura vb.)
+                      </label>
+                      <input
+                        name="measurementNote"
+                        placeholder="Ölçüm notu (yalnızca ölçek referansı varsa kaydedilir)"
+                        className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs"
+                      />
+                      <button type="submit" className="justify-self-start rounded-lg border border-border px-3 py-1.5 text-xs text-ink hover:border-accent">
+                        Kaydet
+                      </button>
+                    </form>
+                    {(analysis.questionsToAsk ?? []).length > 0 && (
+                      <ul className="mt-2 list-inside list-disc text-xs text-muted">
+                        {(analysis.questionsToAsk ?? []).map((q) => (
+                          <li key={q}>{q}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                ) : (
+                  analysis && (
+                    <ul className="list-inside list-disc text-xs text-ink/90">
+                      {(analysis.observations ?? []).map((o) => (
+                        <li key={o}>{o}</li>
+                      ))}
+                    </ul>
+                  )
+                )}
+              </div>
+            );
+          })}
+          {leadAttachments.length === 0 && <p className="text-sm text-muted">Henüz fotoğraf yüklenmedi.</p>}
+        </div>
       </section>
 
       <section className="rounded-xl border border-border bg-surface-raised p-5">
@@ -140,6 +272,41 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 Teklif oluştur (PDF)
               </button>
             </form>
+          </div>
+        )}
+
+        {scopeMaterialItems.length > 0 && (
+          <div className="mt-3 space-y-1 rounded-lg bg-surface p-4 text-sm">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Envanter kontrolü (Agent 10/33)
+            </h3>
+            {scopeMaterialItems.map((s) => (
+              <p key={s.id} className="text-gold">
+                {s.label}: {s.notes}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {(scopeAssumptions.length > 0 || scopeRisks.length > 0) && (
+          <div className="mt-3 space-y-2 rounded-lg bg-surface p-4 text-sm">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Teknik yöntem planı (Agent 08) — sahada doğrulanacaklar
+            </h3>
+            {scopeAssumptions.length > 0 && (
+              <ul className="list-inside list-disc text-ink/90">
+                {scopeAssumptions.map((a) => (
+                  <li key={a.id}>{a.description}</li>
+                ))}
+              </ul>
+            )}
+            {scopeRisks.length > 0 && (
+              <ul className="list-inside list-disc text-accent">
+                {scopeRisks.map((r) => (
+                  <li key={r.id}>{r.description}</li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
       </section>

@@ -2,7 +2,7 @@ import { db } from '@/db/client';
 import { suppliers, supplierProducts, supplierPriceObservations } from '@/db/schema';
 import { desc } from 'drizzle-orm';
 import { validateDiscountClaim } from '@/lib/suppliers/landed-cost';
-import { addSupplierObservationAction } from './actions';
+import { addSupplierObservationAction, fetchAndAddSupplierObservationAction } from './actions';
 
 export default async function SuppliersPage() {
   const observations = await db.select().from(supplierPriceObservations).orderBy(desc(supplierPriceObservations.observedAt));
@@ -30,6 +30,31 @@ export default async function SuppliersPage() {
         </button>
       </form>
 
+      <details className="rounded-xl border border-border bg-surface-raised p-5">
+        <summary className="cursor-pointer text-sm font-medium text-ink">
+          + URL&apos;den fiyat çek (owner_pasted_url — otomatik, ücretsiz, doğrulanmamış)
+        </summary>
+        <form action={fetchAndAddSupplierObservationAction} className="mt-4 grid gap-3 sm:grid-cols-3">
+          <input name="supplierName" placeholder="Tedarikçi" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
+          <input name="material" placeholder="Malzeme" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
+          <input name="unit" placeholder="Birim" required className="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
+          <input
+            name="sourceUrl"
+            type="url"
+            placeholder="Ürün sayfası URL'si"
+            required
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm sm:col-span-3"
+          />
+          <p className="text-xs text-muted sm:col-span-3">
+            Sayfa otomatik olarak taranır ve bulunan fiyat &quot;düşük/orta güven&quot; olarak kaydedilir — asla
+            kesin doğru kabul edilmez, mutlaka kontrol edin.
+          </p>
+          <button type="submit" className="justify-self-start rounded-lg border border-border px-4 py-2 text-sm text-ink hover:border-accent sm:col-span-3">
+            Fiyatı çek ve kaydet
+          </button>
+        </form>
+      </details>
+
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-sm">
           <thead className="bg-surface-raised text-left text-xs uppercase text-muted">
@@ -39,6 +64,7 @@ export default async function SuppliersPage() {
               <th className="px-4 py-3">Fiyat</th>
               <th className="px-4 py-3">Kontrol edildi</th>
               <th className="px-4 py-3">İndirim</th>
+              <th className="px-4 py-3">Güven</th>
               <th className="px-4 py-3">Durum</th>
             </tr>
           </thead>
@@ -79,6 +105,7 @@ export default async function SuppliersPage() {
                       '—'
                     )}
                   </td>
+                  <td className="px-4 py-3 text-xs text-muted">{o.verificationConfidence}</td>
                   <td className="px-4 py-3">
                     {isStale ? <span className="text-accent">Güncelliğini yitirdi</span> : <span className="text-muted">Güncel</span>}
                   </td>
@@ -87,7 +114,7 @@ export default async function SuppliersPage() {
             })}
             {observations.length === 0 && (
               <tr>
-                <td className="px-4 py-6 text-center text-muted" colSpan={6}>
+                <td className="px-4 py-6 text-center text-muted" colSpan={7}>
                   Henüz tedarikçi verisi yok.
                 </td>
               </tr>

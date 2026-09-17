@@ -11,6 +11,9 @@ import { findDuplicates, type DedupeCandidate } from '@/lib/crm/dedupe';
 import { qualifyLead, assertNoSensitiveTraits } from '@/lib/crm/qualification';
 import { canTransition } from '@/lib/crm/state-machine';
 import { getCompanyProfile } from '@/lib/server/repo';
+import { eventBus, ensureHandlersRegistered, recordAgentRun } from '@/lib/orchestration';
+
+ensureHandlersRegistered();
 
 export async function createLeadAction(formData: FormData): Promise<void> {
   const auth = await requireAuth();
@@ -47,6 +50,15 @@ export async function createLeadAction(formData: FormData): Promise<void> {
   const matches = findDuplicates(incoming, candidates);
   const autoMergeMatch = matches.find((m) => m.autoMergeEligible);
 
+  await recordAgentRun({
+    agentKey: 'agent03_dedupe',
+    triggeredBy: auth.displayName ?? 'owner',
+    entityType: 'lead',
+    entityId: autoMergeMatch?.candidateId ?? 'incoming',
+    inputSummary: { phone: Boolean(phone), email: Boolean(email), hasRawText: Boolean(rawText) },
+    outputSummary: { matchCount: matches.length, autoMerged: Boolean(autoMergeMatch) },
+  });
+
   if (autoMergeMatch) {
     await db.insert(leadEvents).values({
       leadId: autoMergeMatch.candidateId,
@@ -75,6 +87,16 @@ export async function createLeadAction(formData: FormData): Promise<void> {
     requiresSiteVisit: true,
     seeksCheapOnly: null,
     bundleOpportunityNearby: false,
+  });
+
+  await recordAgentRun({
+    agentKey: 'agent04_qualification',
+    triggeredBy: auth.displayName ?? 'owner',
+    entityType: 'lead',
+    entityId: 'pending', // the lead id doesn't exist until the insert just below
+    inputSummary: { serviceFit, estimatedScale, urgency },
+    outputSummary: { priority: qualification.priority, score: qualification.score },
+    confidence: qualification.score / 100,
   });
 
   const [lead] = await db
@@ -109,6 +131,8 @@ export async function createLeadAction(formData: FormData): Promise<void> {
     entityId: lead!.id,
     after: lead as unknown as Record<string, unknown>,
   });
+
+  await eventBus.emit('lead.created', { leadId: lead!.id });
 
   revalidatePath('/dashboard/leads');
   redirect(`/dashboard/leads/${lead!.id}`);

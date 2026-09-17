@@ -8,6 +8,7 @@ import { calculateMaterialRequirement, type MaterialRequirementResult } from './
 import { calculateWasteEstimate, type WasteEstimateResult } from './waste';
 import { calculateLabourPlan, type CrewMemberInput, type LabourPlanResult } from './labour';
 import { calculatePrice, type PricingCostInputs, type PricingPolicyInputs, type PricingResult } from './engine';
+import { offsetRequirementWithInventory, type InventoryOffsetResult } from './inventory';
 import type { FactStatus } from '@/db/schema/scope';
 
 export const CERAMIC_TERRACE_MANDATORY_QUESTIONS: { key: string; questionNl: string }[] = [
@@ -191,4 +192,51 @@ export function computeCeramicTerraceJob(
   });
 
   return { materials, waste, labour, costs, pricing };
+}
+
+export interface InventoryOnHand {
+  ceramicTilesOnHand: number;
+  sandSubbaseOnHand: number;
+}
+
+export interface InventoryAdjustedResult {
+  tileOffset: InventoryOffsetResult;
+  sandOffset: InventoryOffsetResult;
+  inventorySavingsEur: number;
+  adjustedCosts: PricingCostInputs;
+  pricing: PricingResult;
+}
+
+/**
+ * Agent 10/33 — checks inventory before recommending a purchase. Only
+ * company-supplied materials cost money to begin with, so customer-supplied
+ * tiles get no offset (nothing to save). Never mutates `breakdown` — returns
+ * a fresh, correctly-recomputed pricing result so callers can't accidentally
+ * mix pre- and post-offset numbers.
+ */
+export function applyInventoryOffset(
+  input: CeramicTerraceInputs,
+  breakdown: CeramicTerraceCostBreakdown,
+  onHand: InventoryOnHand,
+  policy: PricingPolicyInputs,
+): InventoryAdjustedResult {
+  const tileMaterial = breakdown.materials.find((m) => m.label === 'ceramic_tiles')!;
+  const sandMaterial = breakdown.materials.find((m) => m.label === 'sand_subbase')!;
+
+  const tileOffset = offsetRequirementWithInventory(tileMaterial.finalQuantity, onHand.ceramicTilesOnHand);
+  const sandOffset = offsetRequirementWithInventory(sandMaterial.finalQuantity, onHand.sandSubbaseOnHand);
+
+  const tileUnitCost = input.tileSuppliedBy === 'company' ? (input.tileUnitCostPerM2 ?? 0) : 0;
+  const inventorySavingsEur = tileOffset.quantityFromInventory * tileUnitCost + sandOffset.quantityFromInventory * input.sandCostPerM3;
+
+  const adjustedCosts: PricingCostInputs = {
+    ...breakdown.costs,
+    materials: Math.max(0, breakdown.costs.materials - inventorySavingsEur),
+  };
+  const pricing =
+    inventorySavingsEur > 0
+      ? calculatePrice(adjustedCosts, { ...policy, estimatedLabourHours: breakdown.labour.totalCrewHours })
+      : breakdown.pricing;
+
+  return { tileOffset, sandOffset, inventorySavingsEur, adjustedCosts, pricing };
 }

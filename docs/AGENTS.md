@@ -12,26 +12,26 @@ This document is the human-readable companion.
 
 | # | Agent | Status | Where |
 |---|---|---|---|
-| 01 | Beyza / Command Orchestrator | **Implemented (deterministic)** | `lib/agents/beyza-orchestrator.ts` |
-| 02 | Lead Radar | Partial — manual capture only | `app/dashboard/leads` |
+| 01 | Beyza / Command Orchestrator | **Implemented (deterministic + voice I/O)** | `lib/agents/beyza-orchestrator.ts`, `app/dashboard/actions.ts`, `components/dashboard/AskBeyza.tsx` |
+| 02 | Lead Radar | Partial — manual capture only; social connectors are Phase 9 | `app/dashboard/leads` |
 | 03 | Lead Enrichment & Deduplication | **Implemented (deterministic)** | `lib/crm/dedupe.ts` |
 | 04 | Qualification & Priority | **Implemented (deterministic)** | `lib/crm/qualification.ts` |
 | 05 | Dutch Sales & Messaging | **Implemented (deterministic)** | `lib/messaging/templates.ts` |
-| 06 | Photo / Vision Inspector | Planned (Phase 5) | schema only: `photo_analyses`, `attachments` |
+| 06 | Photo / Vision Inspector | **Implemented (deterministic skeleton + AI-router gated)** | `lib/agents/vision-inspector.ts`, `app/dashboard/leads/[id]/actions.ts` (`uploadPhotoAction`, `updatePhotoAnalysisAction`) |
 | 07 | Measurement & Scope Builder | **Implemented (deterministic)** | `lib/pricing/ceramic-terrace-template.ts`, `db/schema/scope.ts` |
-| 08 | Technical Method Planner | Planned (Phase 4+) | schema only: `risk_flags` |
+| 08 | Technical Method Planner | **Implemented (deterministic)** | `lib/pricing/method-planner.ts` |
 | 09 | Pricing & Margin Engine | **Implemented (deterministic)** | `lib/pricing/engine.ts` |
-| 10 | Supplier & Deal Scout | Partial — manual entry + landed-cost math | `lib/suppliers/landed-cost.ts` |
+| 10 | Supplier & Deal Scout | **Implemented (manual entry + owner-pasted URL fetch + landed-cost math)** — automated scanning/scraping is out of scope (no paid scraping API) | `lib/suppliers/landed-cost.ts`, `lib/suppliers/url-price-fetcher.ts` |
 | 11 | Bill of Materials / Quantity Agent | **Implemented (deterministic)** | `lib/pricing/bom.ts` |
 | 12 | Waste & Disposal Agent | **Implemented (deterministic)** | `lib/pricing/waste.ts` |
 | 13 | Equipment & Rental Agent | **Implemented (deterministic)** | `lib/pricing/equipment.ts` |
 | 14 | Labour & Crew Planner | **Implemented (deterministic)** | `lib/pricing/labour.ts` |
 | 15 | Scheduling & Route Agent | Planned (Phase 7) | — |
 | 16 | Calendar & Appointment Agent | Planned (Phase 7) | schema only: `appointments`, `calendar_events` |
-| 17 | CRM, Memory & Follow-up Agent | **Implemented (deterministic)** — automation is Phase 7 | `lib/crm/state-machine.ts`, `lib/crm/follow-up.ts` |
-| 18 | Finance & Job Costing Agent | Partial — actual-vs-estimate only | `lib/jobs/costing.ts` |
+| 17 | CRM, Memory & Follow-up Agent | **Implemented (deterministic)**, now event-driven via the orchestration bus — automated scheduling is Phase 7 | `lib/crm/state-machine.ts`, `lib/crm/follow-up.ts`, `lib/orchestration/register-handlers.ts` |
+| 18 | Finance & Job Costing Agent | Partial — actual-vs-estimate only; full BI reporting is Phase 7 | `lib/jobs/costing.ts` |
 | 19 | Reputation & Content Agent | Planned (Phase 7) | schema only: `review_requests` |
-| 20 | QA, Compliance & System Health Agent | **Implemented (deterministic)** | `lib/pricing/qa-gate.ts` |
+| 20 | QA, Compliance & System Health Agent | **Implemented (deterministic)**, now also records `agent_runs` for every agent invocation across the system | `lib/pricing/qa-gate.ts`, `lib/orchestration/agent-run.ts` |
 
 ## Why so many agents are "deterministic" rather than "AI"
 
@@ -41,11 +41,70 @@ or a rule (pricing, BOM, waste, qualification scoring, dedupe, state
 transitions, QA gates) is implemented as plain code — this is strictly better
 than an LLM call here: it's free, instant, deterministic, and auditable.
 
-Only genuinely open-ended tasks (interpreting an arbitrary photo, planning a
-technically novel method, holding a free-form conversation) actually need a
-model. Those are marked "Planned" above and will route through `lib/ai/router.ts`
-once a provider is configured — never silently, and never above the configured
-budget.
+Only genuinely open-ended tasks (interpreting an arbitrary photo, holding a
+free-form conversation) actually need a model. Agent 06 (Photo/Vision
+Inspector) is the one implemented agent that is AI-gated: its deterministic
+skeleton (`buildManualReviewSkeleton`, `sanitizeMeasurementClaims`,
+`computePhotoConfidence`) always runs first and produces an honest
+"awaiting manual review" result with zero AI spend; a real vision-model call
+would layer on top through `lib/ai/model-router.ts` only if a provider is
+configured, budgeted, and enabled — never silently, and never above the
+configured budget. With no key configured (the shipped default), Agent 06
+is fully usable as a manual-review queue.
+
+## Orchestration (section 47)
+
+`lib/orchestration/events.ts` implements a synchronous, in-process event bus
+(`EventBus`, singleton `eventBus`) so agents react to real state changes
+instead of polling or chat-looping. Six events are wired end-to-end via
+`lib/orchestration/register-handlers.ts`: `lead.created`, `message.received`,
+`photo.added`, `scope.changed`, `quote.approved`, `job.completed`. Every
+handler invocation is wrapped in `withAgentRun()`
+(`lib/orchestration/agent-run.ts`), which writes a row to `agent_runs`
+(agent key, trigger, entity, input/output summary, confidence, provider,
+cost, cache-hit flag, status) — this is the audit trail section 9 requires,
+now populated for real instead of only by deterministic pricing/QA code.
+Emitting an event is synchronous and in-process: no queue, no network hop,
+no added latency budget, and no failure mode where an event is silently
+dropped — a handler that throws is caught and recorded as a failed
+`agent_run`, it does not take down the emitting action.
+
+## AI provider router, caching, and resilience (Phase 5)
+
+`lib/ai/model-router.ts` is the single entry point any agent must use to
+reach a model — direct provider calls from agent code are not permitted.
+Before ever reaching a network call it runs, in order:
+
+1. **Budget gate** (unchanged from Phase 1-3, `lib/ai/router.ts`) — blocks
+   outright unless a key is configured, the provider is owner-enabled, both
+   monthly and daily caps are `> 0`, and the estimated cost fits the
+   remaining budget.
+2. **Prompt cache** (`lib/ai/cache.ts`, `prompt_cache` table) — hashes the
+   task type + a compact context pack; an identical hash within the cache
+   TTL returns the stored output with zero cost and `cacheHit: true` on the
+   `agent_runs`/`api_usage` row, no provider call made.
+3. **Circuit breaker** (`lib/ai/circuit-breaker.ts`) — a pure state machine
+   (closed → open after N consecutive failures → half-open after a cooldown)
+   per provider; an open circuit is skipped without attempting the network
+   call, and the router falls back to the next configured tier.
+4. **Retry/backoff** (`lib/ai/retry.ts`) — exponential backoff, but never
+   retries a 4xx (the request itself is wrong, retrying wastes budget).
+
+Provider adapters (`lib/ai/providers/{ollama,openai-compatible,gemini,nvidia,
+anthropic}.ts`) share a common `types.ts` interface and take an injectable
+`Transport` so tests never make a real network call. **None of this activates
+anything by default** — with the shipped €0 budget and no keys configured,
+every call is blocked at step 1 and the deterministic fallback (already
+required by every agent) is what actually runs.
+
+## Context packs (section 49)
+
+`lib/ai/context-pack.ts` builds a compact, structured summary of a lead
+(status, key facts, recent events) instead of ever prompting with raw
+conversation history — smaller prompts, deterministic cache keys, and no
+unbounded token growth as a lead's history lengthens. Packs are versioned and
+persisted to `context_packs` so a cache hit can be traced back to exactly
+what input produced it.
 
 ## Cost/audit discipline per agent
 
@@ -55,4 +114,6 @@ value, a cost policy, a cache policy, an approval boundary, a fallback
 behavior, and an audit trail. For the implemented deterministic agents this is
 satisfied by: pure, typed functions (inputs/outputs), confidence scoring
 (`lib/pricing/confidence.ts`), the QA gate as the shared approval boundary, and
-`audit_logs`/`lead_events`/`agent_runs` tables for the trail.
+`audit_logs`/`lead_events`/`agent_runs` tables for the trail. As of this
+phase, `agent_runs` is populated by every orchestration-event handler and
+every model-router call, not just pricing/QA — see "Orchestration" above.

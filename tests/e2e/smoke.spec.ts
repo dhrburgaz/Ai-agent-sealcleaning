@@ -65,4 +65,24 @@ test('setup wizard -> login -> lead -> estimate -> quote PDF', async ({ page }) 
   // Generate the PDF quote
   await page.getByRole('button', { name: 'Teklif oluştur (PDF)' }).click();
   await expect(page.getByText(/Q-\d{4}-\d{5}/)).toBeVisible();
+
+  // Method plan (Agent 08) should have produced at least one verification note
+  // for this template's hardcoded-unknown fields, or the section is absent —
+  // either way the page must not have crashed rendering it.
+  await expect(page.getByRole('heading', { name: 'Fotoğraflar (Agent 06)' })).toBeVisible();
+
+  // Ask Beyza from the lead page (leadId-scoped intent)
+  await page.getByPlaceholder('Beyza, durumlar ne?').fill('Bu iş için ne eksik?');
+  await page.getByRole('button', { name: 'Sor' }).last().click();
+  await expect(page.locator('p.whitespace-pre-line').last()).toBeVisible();
+
+  // Phase 4-6 pages render without a server error
+  for (const [path, heading] of [
+    ['/dashboard/inventory', 'Envanter'],
+    ['/dashboard/settings/ai-usage', 'AI Kullanım Panosu'],
+    ['/dashboard/suppliers', 'Tedarikçiler & Fırsatlar'],
+  ] as const) {
+    await page.goto(path);
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+  }
 });
